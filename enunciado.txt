@@ -1,0 +1,16 @@
+Municipalidad de Rio Cuarto
+La gestión municipal de Rio Cuarto ha solicitado a todos sus empleados realizar el registro de huellas
+dactilares para implementar control de accesos próximamente.
+A tal fin se han dispuesto 4 terminales con los lectores de huella en una oficina y los empleados realizan
+allí su registro que demora 5 a 8 minutos uniformemente distribuidos.
+Un profesional técnico se presenta en el lugar para realizar mantenimiento de los lectores de huella
+empezando por la primera que esté libre (si hay varias, elige cualquiera), luego a otra y así
+sucesivamente, demorando un tiempo en cada equipo entre 3’ y 10’. Tiene prioridad sobre los
+empleados pero no interrumpe el registro. El técnico regresa a hacer el mantenimiento en 1 hora ± 3’
+desde que finalizo el mantenimiento de la última terminal.
+Los empleados llegan para registrarse con un promedio de tiempo entre llegadas de distribución
+exponencial negativa de media 2’
+Si un empleado llega y hay más de 5 empleados esperando, se va y regresa a la media hora.
+Determine el % de empleados que se van para regresar más tarde.
+Determine el tiempo promedio de espera de los empleados (considere todos los empleados que
+estuvieron en el sistema). 

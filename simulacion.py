@@ -22,12 +22,12 @@ eventos           = []
 reloj             = 0.0
 iteracion         = 0
 id_emp_contador   = 0
-col_emp_contador  = 0
 contador_atendidos = 0
 contador_rt       = 0
 contador_llegaron = 0
 acum_espera       = 0.0
 vector_estado     = []
+ultimo_idx_terminal = -1  # round-robin: índice de la última terminal asignada a un empleado
 
 
 # ── Variables aleatorias ──────────────────────────────────────────────────────
@@ -71,9 +71,13 @@ def tiempo_de(tipo):
 
 
 def terminal_libre_para_emp():
-    for t in terminales:
-        if t["estado"] == "Libre":
-            return t
+    global ultimo_idx_terminal
+    n = len(terminales)
+    for offset in range(1, n + 1):
+        idx = (ultimo_idx_terminal + offset) % n
+        if terminales[idx]["estado"] == "Libre":
+            ultimo_idx_terminal = idx
+            return terminales[idx]
     return None
 
 
@@ -100,6 +104,7 @@ def snapshot_empleados():
             "estado":          emp["estado"],
             "hora_llegada":    round(emp["hora_llegada"], 2),
             "hora_inicio_esp": round(emp["hora_inicio_esp"], 2) if emp["hora_inicio_esp"] is not None else "-",
+            "terminal_id":     emp["terminal_id"] if emp["terminal_id"] is not None else "-",
         })
     return snaps
 
@@ -185,33 +190,37 @@ def atender_cola_con_terminal(terminal):
     Prioridad: técnico (solo si terminal tiene pendiente=True) > empleado > libre.
     Si el técnico está al frente pero la terminal ya fue mantenida,
     se omite al técnico y se sirve al primer empleado en espera.
+    Retorna dict con las claves de random generadas (puede estar vacío).
     """
     if not cola:
         terminal["estado"] = "Libre"
-        return None, None
+        return {}
 
     siguiente = cola[0]
 
     if siguiente["tipo"] == "tecnico":
         if terminal["pendiente"]:
             cola.pop(0)
-            return asignar_tecnico_a_terminal(terminal)
+            rnd_m, t_m = asignar_tecnico_a_terminal(terminal)
+            return {"manten": rnd_m, "t_manten": t_m}
         else:
             # Terminal no necesita mantenimiento — saltar al técnico, atender empleados
             for i, item in enumerate(cola):
                 if item["tipo"] == "empleado":
                     cola.pop(i)
-                    return asignar_empleado_a_terminal(item["id"], terminal)
+                    rnd_a, t_a = asignar_empleado_a_terminal(item["id"], terminal)
+                    return {"atencion": rnd_a, "t_atencion": t_a}
             terminal["estado"] = "Libre"
-            return None, None
+            return {}
     else:
         cola.pop(0)
-        return asignar_empleado_a_terminal(siguiente["id"], terminal)
+        rnd_a, t_a = asignar_empleado_a_terminal(siguiente["id"], terminal)
+        return {"atencion": rnd_a, "t_atencion": t_a}
 
 
 # ── Procesadores de eventos ───────────────────────────────────────────────────
 def procesar_llegada_emp():
-    global id_emp_contador, contador_llegaron, contador_rt, col_emp_contador
+    global id_emp_contador, contador_llegaron, contador_rt
 
     id_emp_contador  += 1
     contador_llegaron += 1
@@ -221,9 +230,8 @@ def procesar_llegada_emp():
     term = terminal_libre_para_emp()
 
     if term:
-        col_emp_contador += 1
         empleados[emp_id] = {
-            "id": emp_id, "col": col_emp_contador,
+            "id": emp_id, "col": emp_id,
             "estado": "EA", "hora_llegada": reloj,
             "hora_inicio_esp": None, "hora_asignacion": None, "terminal_id": None
         }
@@ -231,9 +239,8 @@ def procesar_llegada_emp():
         rnds["atencion"]   = rnd_a
         rnds["t_atencion"] = t_a
     elif emp_en_cola() < MAX_COLA:
-        col_emp_contador += 1
         empleados[emp_id] = {
-            "id": emp_id, "col": col_emp_contador,
+            "id": emp_id, "col": emp_id,
             "estado": "EA", "hora_llegada": reloj,
             "hora_inicio_esp": reloj, "hora_asignacion": None, "terminal_id": None
         }
@@ -267,8 +274,8 @@ def procesar_fin_atencion(terminal_id):
     term["emp_id"]   = None
     term["fin_aten"] = None
 
-    atender_cola_con_terminal(term)
-    guardar_fila(f"Fin Atencion T{terminal_id}", {})
+    rnds = atender_cola_con_terminal(term)
+    guardar_fila(f"Fin Atencion T{terminal_id}", rnds)
 
     if emp_id and emp_id in empleados:
         del empleados[emp_id]
@@ -381,9 +388,9 @@ CORS(app, origins="*")
 
 def resetear_estado():
     global terminales, tecnico, cola, empleados, eventos
-    global reloj, iteracion, id_emp_contador, col_emp_contador
+    global reloj, iteracion, id_emp_contador
     global contador_atendidos, contador_rt, contador_llegaron, acum_espera
-    global vector_estado
+    global vector_estado, ultimo_idx_terminal
 
     terminales = [
         {"id": i, "estado": "Libre", "pendiente": True, "fin_aten": None, "emp_id": None}
@@ -396,12 +403,12 @@ def resetear_estado():
     reloj     = 0.0
     iteracion = 0
     id_emp_contador    = 0
-    col_emp_contador   = 0
     contador_atendidos = 0
     contador_rt        = 0
     contador_llegaron  = 0
     acum_espera        = 0.0
     vector_estado      = []
+    ultimo_idx_terminal = -1
 
 
 @app.route("/simular", methods=["POST"])

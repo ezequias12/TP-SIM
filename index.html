@@ -267,8 +267,10 @@ function transformar(f) {
   });
   (f.fin_at || []).forEach((v, i) => { row[`fin_at_${i+1}`] = v; });
   (f.empleados_snap || []).forEach(e => {
+    const seFue = e.estado === "AT";  // fin de atención → empleado ya se fue
     row[`emp${e.col}_estado`] = e.estado;
-    row[`emp${e.col}_hora`]   = e.hora_inicio_esp !== "-" ? e.hora_inicio_esp : e.hora_llegada;
+    row[`emp${e.col}_hora`]   = seFue ? "-" : (e.hora_inicio_esp !== "-" ? e.hora_inicio_esp : e.hora_llegada);
+    row[`emp${e.col}_term`]   = seFue ? "-" : e.terminal_id;
   });
   return row;
 }
@@ -334,6 +336,7 @@ function App() {
       cols: [
         { key: `emp${n}_estado`, label: "Estado", w: 58, cf: cfEmp },
         { key: `emp${n}_hora`,   label: "Hora",   w: 78 },
+        { key: `emp${n}_term`,   label: "Term.",  w: 50 },
       ]
     })),
     [activeEmpCols]
@@ -390,7 +393,7 @@ function App() {
       <tr key={idx} className={selec === idx ? "selected" : ""} onClick={() => setSelec(idx)}>
         {COLUMNAS.map((col, ci) => {
           const raw     = row[col.key] ?? "-";
-          const display = raw === "AT" ? "-" : (typeof raw === "number" ? Math.trunc(raw * 100) / 100 : raw);
+          const display = raw === "AT" ? "x" : (typeof raw === "number" ? Math.trunc(raw * 100) / 100 : raw);
           const cls     = col.cf ? col.cf(String(raw)) : "";
           return (
             <td key={ci} className={cls} style={{ minWidth: col.w }}>
