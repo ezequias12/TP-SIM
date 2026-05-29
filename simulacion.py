@@ -22,6 +22,7 @@ eventos           = []
 reloj             = 0.0
 iteracion         = 0
 id_emp_contador   = 0
+col_emp_contador  = 0
 contador_atendidos = 0
 contador_rt       = 0
 contador_llegaron = 0
@@ -93,13 +94,12 @@ def emp_en_cola():
 
 def snapshot_empleados():
     snaps = []
-    for emp in list(empleados.values())[:9]:
+    for emp in sorted(empleados.values(), key=lambda e: e["col"]):
         snaps.append({
-            "id":             emp["id"],
-            "estado":         emp["estado"],
-            "hora_llegada":   round(emp["hora_llegada"], 2),
+            "col":             emp["col"],
+            "estado":          emp["estado"],
+            "hora_llegada":    round(emp["hora_llegada"], 2),
             "hora_inicio_esp": round(emp["hora_inicio_esp"], 2) if emp["hora_inicio_esp"] is not None else "-",
-            "terminal_id":    emp["terminal_id"] if emp["terminal_id"] else "-"
         })
     return snaps
 
@@ -211,35 +211,35 @@ def atender_cola_con_terminal(terminal):
 
 # ── Procesadores de eventos ───────────────────────────────────────────────────
 def procesar_llegada_emp():
-    global id_emp_contador, contador_llegaron, contador_rt
+    global id_emp_contador, contador_llegaron, contador_rt, col_emp_contador
 
     id_emp_contador  += 1
     contador_llegaron += 1
     emp_id = id_emp_contador
 
-    empleados[emp_id] = {
-        "id":              emp_id,
-        "estado":          "EA",
-        "hora_llegada":    reloj,
-        "hora_inicio_esp": None,
-        "hora_asignacion": None,
-        "terminal_id":     None
-    }
-
     rnds = {}
     term = terminal_libre_para_emp()
 
     if term:
+        col_emp_contador += 1
+        empleados[emp_id] = {
+            "id": emp_id, "col": col_emp_contador,
+            "estado": "EA", "hora_llegada": reloj,
+            "hora_inicio_esp": None, "hora_asignacion": None, "terminal_id": None
+        }
         rnd_a, t_a = asignar_empleado_a_terminal(emp_id, term)
         rnds["atencion"]   = rnd_a
         rnds["t_atencion"] = t_a
+    elif emp_en_cola() < MAX_COLA:
+        col_emp_contador += 1
+        empleados[emp_id] = {
+            "id": emp_id, "col": col_emp_contador,
+            "estado": "EA", "hora_llegada": reloj,
+            "hora_inicio_esp": reloj, "hora_asignacion": None, "terminal_id": None
+        }
+        cola.append({"tipo": "empleado", "id": emp_id})
     else:
-        if emp_en_cola() < MAX_COLA:
-            empleados[emp_id]["hora_inicio_esp"] = reloj
-            cola.append({"tipo": "empleado", "id": emp_id})
-        else:
-            contador_rt += 1
-            del empleados[emp_id]
+        contador_rt += 1
 
     rnd_e, t_e = gen_llegada_emp()
     rnds["llegada_emp"]   = rnd_e
@@ -262,13 +262,16 @@ def procesar_fin_atencion(terminal_id):
         if emp["hora_inicio_esp"] is not None and emp["hora_asignacion"] is not None:
             espera = emp["hora_asignacion"] - emp["hora_inicio_esp"]
             acum_espera = round(acum_espera + espera, 2)
-        del empleados[emp_id]
+        empleados[emp_id]["estado"] = "AT"  # visible en snapshot de esta fila
 
     term["emp_id"]   = None
     term["fin_aten"] = None
 
     atender_cola_con_terminal(term)
     guardar_fila(f"Fin Atencion T{terminal_id}", {})
+
+    if emp_id and emp_id in empleados:
+        del empleados[emp_id]
 
 
 def procesar_llegada_tec():
@@ -321,7 +324,7 @@ def procesar_fin_manten(terminal_id):
         # Ronda completa — resetear pendiente y descansar
         for t in terminales:
             t["pendiente"] = True
-        tecnico["estado"] = "D"
+        tecnico["estado"] = "Descansando"
         rnd_t, t_t = gen_llegada_tec()
         rnds["llegada_tec"]   = rnd_t
         rnds["t_llegada_tec"] = t_t
@@ -373,12 +376,12 @@ def simular(tiempo_max):
 
 # ── Flask ─────────────────────────────────────────────────────────────────────
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins="*")
 
 
 def resetear_estado():
     global terminales, tecnico, cola, empleados, eventos
-    global reloj, iteracion, id_emp_contador
+    global reloj, iteracion, id_emp_contador, col_emp_contador
     global contador_atendidos, contador_rt, contador_llegaron, acum_espera
     global vector_estado
 
@@ -386,13 +389,14 @@ def resetear_estado():
         {"id": i, "estado": "Libre", "pendiente": True, "fin_aten": None, "emp_id": None}
         for i in range(1, 5)
     ]
-    tecnico   = {"estado": "D", "terminal_id": None, "fin_manten": None}
+    tecnico   = {"estado": "Descansando", "terminal_id": None, "fin_manten": None}
     cola      = []
     empleados = {}
     eventos   = []
     reloj     = 0.0
     iteracion = 0
     id_emp_contador    = 0
+    col_emp_contador   = 0
     contador_atendidos = 0
     contador_rt        = 0
     contador_llegaron  = 0
@@ -442,4 +446,4 @@ def endpoint_simular():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5001)
