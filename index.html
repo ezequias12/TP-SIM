@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>TP4 Simulación — Grupo 22</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #1e1e2e; color: #cdd6f4; font-family: 'Consolas', 'Courier New', monospace; font-size: 13px; }
+
+    .header { background: #181825; padding: 16px 24px; border-bottom: 1px solid #313244; }
+    .header h1 { font-size: 18px; color: #cba6f7; }
+    .header p  { font-size: 12px; color: #6c7086; margin-top: 2px; }
+
+    .control-panel { background: #181825; border-bottom: 2px solid #313244; }
+    .panel-section {
+      display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;
+      padding: 10px 24px; border-bottom: 1px solid #2a2a3e;
+    }
+    .panel-section:last-child { border-bottom: none; }
+    .section-label { width: 100%; font-size: 11px; color: #6c7086; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+
+    .param-group label { display: block; font-size: 11px; color: #6c7086; margin-bottom: 4px; }
+    .param-group input {
+      background: #313244; border: 1px solid #45475a; color: #cdd6f4;
+      padding: 6px 10px; border-radius: 4px; width: 110px;
+      font-family: inherit; font-size: 13px;
+    }
+    .param-group input:focus { outline: none; border-color: #cba6f7; }
+    .param-group input.vis { background: #1e1e2e; }
+    .param-group input.vis:focus { border-color: #89b4fa; }
+
+    .btn { padding: 7px 18px; border: none; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: bold; }
+    .btn-primary   { background: #cba6f7; color: #1e1e2e; }
+    .btn-primary:hover  { background: #b4befe; }
+    .btn-secondary { background: #313244; color: #cdd6f4; border: 1px solid #45475a; }
+    .btn-secondary:hover { background: #45475a; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .info-chip { align-self: flex-end; padding: 7px 12px; background: #2a2a3e; border-radius: 4px; font-size: 12px; color: #6c7086; }
+    .info-chip b { color: #a6e3a1; }
+
+    .main { padding: 16px 24px; }
+    .row-title { font-size: 12px; color: #6c7086; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; margin-top: 16px; }
+
+    /* Grid */
+    .grid-wrapper { overflow: auto; max-height: 520px; border: 1px solid #313244; border-radius: 4px; background: #181825; }
+    table { border-collapse: collapse; white-space: nowrap; min-width: 100%; }
+
+    /* Encabezados — z-index gestionado por inline style (2 filas) */
+    thead th {
+      padding: 4px 8px; font-size: 11px;
+      border-right: 1px solid #45475a;
+      user-select: none;
+    }
+
+    /* Cuerpo */
+    tbody tr { cursor: pointer; }
+    tbody tr:hover td { background: #2a2a3e !important; }
+    tbody tr.selected td { background: #3d2d5c !important; color: #fff; }
+    tbody td {
+      padding: 4px 9px; border-bottom: 1px solid #1e1e2e;
+      border-right: 1px solid #2a2a3e; color: #cdd6f4;
+    }
+    /* Primera columna fija (sticky left) — solo tbody */
+    tbody td:first-child { position: sticky; left: 0; z-index: 2; background: #181825; }
+    tbody tr:hover    td:first-child { background: #2a2a3e; }
+    tbody tr.selected td:first-child { background: #3d2d5c !important; }
+
+    /* Colores de estado */
+    .sa    { color: #a6e3a1; }
+    .ea    { color: #f9e2af; }
+    .libre { color: #89dceb; }
+    .ocup  { color: #fab387; }
+    .mant  { color: #f38ba8; }
+    .etl   { color: #f9e2af; }
+    .rm    { color: #f38ba8; }
+    .desc  { color: #6c7086; }
+
+    .stats { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
+    .stat-card { background: #181825; border: 1px solid #313244; border-radius: 6px; padding: 12px 18px; min-width: 140px; }
+    .stat-card .label { font-size: 11px; color: #6c7086; margin-bottom: 4px; }
+    .stat-card .value { font-size: 22px; color: #cba6f7; font-weight: bold; }
+
+    .loading { color: #6c7086; padding: 20px; text-align: center; }
+    .error   { color: #f38ba8; padding: 12px; background: #2a1a1a; border-radius: 4px; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useCallback, useMemo } = React;
+
+// ── Color helpers ─────────────────────────────────────────────────────────────
+function cfTerminal(v) {
+  if (v === "Libre")            return "libre";
+  if (v === "Ocupada")          return "ocup";
+  if (v === "Siendo mantenida") return "mant";
+  return "";
+}
+function cfTecnico(v) {
+  if (v === "D")   return "desc";
+  if (v === "ETL") return "etl";
+  if (v === "RM")  return "rm";
+  return "";
+}
+function cfEmp(v) {
+  if (v === "SA") return "sa";
+  if (v === "EA") return "ea";
+  return "";
+}
+
+// ── Definición de grupos de encabezado ────────────────────────────────────────
+// single:true  → <th rowSpan=2> en fila 1, nada en fila 2
+// (sin single) → <th colSpan=N> en fila 1, sub-<th> en fila 2
+const ROW1_H = 26;  // altura fija de la primera fila de encabezado (px)
+
+const GRP = [
+  // Singles con rowspan=2
+  { single:true, key:"num",    label:"#",      w:48  },
+  { single:true, key:"reloj",  label:"Reloj",  w:68  },
+  { single:true, key:"evento", label:"Evento", w:210 },
+
+  // Llegada Empleado
+  { label:"Llegada Empleado",   bg:"#5c3800", fg:"#ffb86c", cols:[
+    { key:"rnd_llegada_emp", label:"RND",    w:72 },
+    { key:"t_llegada_emp",   label:"T.entr", w:65 },
+    { key:"prox_emp",        label:"Próx.",  w:68 },
+  ]},
+
+  // Llegada Técnico
+  { label:"Llegada Técnico",    bg:"#5c3800", fg:"#ffb86c", cols:[
+    { key:"rnd_llegada_tec", label:"RND",    w:72 },
+    { key:"t_llegada_tec",   label:"T.entr", w:65 },
+    { key:"prox_tec",        label:"Próx.",  w:68 },
+  ]},
+
+  // Fin Atención
+  { label:"Fin Atención",       bg:"#4a4000", fg:"#f9e2af", cols:[
+    { key:"rnd_atencion", label:"RND",  w:72 },
+    { key:"t_atencion",   label:"T.at", w:60 },
+    { key:"fin_at_1",     label:"At 1", w:62 },
+    { key:"fin_at_2",     label:"At 2", w:62 },
+    { key:"fin_at_3",     label:"At 3", w:62 },
+    { key:"fin_at_4",     label:"At 4", w:62 },
+  ]},
+
+  // Fin Mantenimiento
+  { label:"Fin Mantenimiento",  bg:"#1e4020", fg:"#a6e3a1", cols:[
+    { key:"rnd_manten", label:"RND",    w:72 },
+    { key:"t_manten",   label:"T.mant", w:62 },
+    { key:"fin_mant",   label:"Fin",    w:65 },
+  ]},
+
+  // Terminales
+  { label:"Terminal 1", bg:"#0e3a2a", fg:"#89dceb", cols:[
+    { key:"t1_estado", label:"Estado", w:120, cf:cfTerminal },
+    { key:"t1_pend",   label:"Pend.",  w:52  },
+  ]},
+  { label:"Terminal 2", bg:"#0e3a2a", fg:"#89dceb", cols:[
+    { key:"t2_estado", label:"Estado", w:120, cf:cfTerminal },
+    { key:"t2_pend",   label:"Pend.",  w:52  },
+  ]},
+  { label:"Terminal 3", bg:"#0e3a2a", fg:"#89dceb", cols:[
+    { key:"t3_estado", label:"Estado", w:120, cf:cfTerminal },
+    { key:"t3_pend",   label:"Pend.",  w:52  },
+  ]},
+  { label:"Terminal 4", bg:"#0e3a2a", fg:"#89dceb", cols:[
+    { key:"t4_estado", label:"Estado", w:120, cf:cfTerminal },
+    { key:"t4_pend",   label:"Pend.",  w:52  },
+  ]},
+
+  // Cola (single)
+  { single:true, key:"cola_largo", label:"Cola", w:52 },
+
+  // Técnico
+  { label:"Técnico",      bg:"#30205a", fg:"#cba6f7", cols:[
+    { key:"tec_estado",   label:"Estado",  w:62, cf:cfTecnico },
+    { key:"tec_terminal", label:"Term.",   w:58 },
+  ]},
+
+  // Estadísticas
+  { label:"Estadísticas", bg:"#1a2250", fg:"#89b4fa", cols:[
+    { key:"cnt_atendidos", label:"Aten.",   w:58 },
+    { key:"cnt_rt",        label:"RT",      w:50 },
+    { key:"pct_rt",        label:"% RT",    w:55 },
+    { key:"acum_espera",   label:"AcumEsp", w:68 },
+    { key:"prom_espera",   label:"PromEsp", w:68 },
+  ]},
+
+  // Empleados 1-9
+  ...[1,2,3,4,5,6,7,8,9].map(n => ({
+    label:`Empleado ${n}`, bg:"#0e3a2a", fg:"#a6e3a1",
+    cols:[
+      { key:`emp${n}_estado`, label:"Estado",                             w:58, cf:cfEmp },
+      { key:`emp${n}_hora`,   label: n<=4 ? "H.Llegada" : "H.Inic.Esp",  w:78 },
+    ]
+  })),
+];
+
+// Lista plana de columnas para renderizar filas de datos
+const COLUMNAS = GRP.flatMap(g =>
+  g.single ? [{ key:g.key, w:g.w, cf:g.cf }] : g.cols
+);
+
+// ── Encabezado de 2 filas ─────────────────────────────────────────────────────
+// Construido una vez (estructura estática, no depende de estado)
+function buildThead() {
+  const BASE_TH = {
+    padding: "4px 8px", fontSize: "11px",
+    borderRight: "1px solid #45475a", userSelect: "none", whiteSpace: "nowrap",
+  };
+  const r1 = [], r2 = [];
+  let isFirstCol = true;
+
+  GRP.forEach((g, gi) => {
+    if (g.single) {
+      r1.push(
+        <th key={`r1-${gi}`} rowSpan={2} style={{
+          ...BASE_TH,
+          position:"sticky", top:0,
+          left: isFirstCol ? 0 : undefined,
+          zIndex: isFirstCol ? 9 : 7,
+          background:"#313244", color:"#b4befe",
+          minWidth: g.w, verticalAlign:"middle",
+          borderBottom: "2px solid #45475a",
+        }}>
+          {g.label}
+        </th>
+      );
+      isFirstCol = false;
+    } else {
+      r1.push(
+        <th key={`r1-${gi}`} colSpan={g.cols.length} style={{
+          ...BASE_TH,
+          position:"sticky", top:0, zIndex:6,
+          background: g.bg, color: g.fg,
+          textAlign:"center",
+          borderBottom: "1px solid rgba(255,255,255,0.15)",
+        }}>
+          {g.label}
+        </th>
+      );
+      g.cols.forEach((col, ci) => {
+        r2.push(
+          <th key={`r2-${gi}-${ci}`} style={{
+            ...BASE_TH,
+            position:"sticky", top: ROW1_H, zIndex:5,
+            background:"#252535", color:"#b4befe",
+            minWidth: col.w,
+            borderBottom: "2px solid #45475a",
+          }}>
+            {col.label}
+          </th>
+        );
+      });
+      isFirstCol = false;
+    }
+  });
+
+  return (
+    <thead>
+      <tr style={{ height: ROW1_H }}>{r1}</tr>
+      <tr>{r2}</tr>
+    </thead>
+  );
+}
+
+const THEAD = buildThead();
+
+// ── Transformación de fila backend → row ──────────────────────────────────────
+function transformar(f) {
+  const row = { ...f };
+  (f.terminales || []).forEach(t => {
+    row[`t${t.id}_estado`] = t.estado;
+    row[`t${t.id}_pend`]   = t.pendiente;
+  });
+  (f.fin_at || []).forEach((v, i) => { row[`fin_at_${i+1}`] = v; });
+  (f.empleados_snap || []).forEach((e, i) => {
+    const n = i+1;
+    row[`emp${n}_estado`] = e.estado;
+    row[`emp${n}_hora`]   = n <= 4 ? e.hora_llegada : e.hora_inicio_esp;
+  });
+  return row;
+}
+
+// Parse helpers — soportan string vacío mientras se escribe
+const pf = (s, d) => { const n = parseFloat(s);  return isNaN(n) ? d : n; };
+const pi = (s, d) => { const n = parseInt(s, 10); return isNaN(n) ? d : n; };
+
+// ── App ───────────────────────────────────────────────────────────────────────
+function App() {
+  // Parámetros del sistema (en rojo en el enunciado)
+  const [mediaLlegEmp, setMediaLlegEmp] = useState("2");
+  const [maxCola,      setMaxCola]      = useState("5");
+  const [atnMin,       setAtnMin]       = useState("5");
+  const [atnMax,       setAtnMax]       = useState("8");
+  const [mantMin,      setMantMin]      = useState("3");
+  const [mantMax,      setMantMax]      = useState("10");
+  const [tecMin,       setTecMin]       = useState("57");
+  const [tecMax,       setTecMax]       = useState("63");
+  const [tiempoMax,    setTiempoMax]    = useState("480");
+
+  // Filtros de visualización
+  const [horaDesde, setHoraDesde] = useState("0");
+  const [cantFilas, setCantFilas] = useState("20");
+
+  // Resultado
+  const [todasFilas, setTodasFilas] = useState([]);
+  const [stats,      setStats]      = useState(null);
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState(null);
+  const [selec,      setSelec]      = useState(null);
+  const tableRef = useRef(null);
+
+  const jNum = pf(horaDesde, 0);
+  const iNum = pi(cantFilas, 20);
+
+  const filas = useMemo(
+    () => todasFilas.filter(f => f.reloj >= jNum).slice(0, iNum),
+    [todasFilas, jNum, iNum]
+  );
+  const ultima = useMemo(
+    () => todasFilas.length > 0 ? todasFilas[todasFilas.length - 1] : null,
+    [todasFilas]
+  );
+  const totalDesdeJ = useMemo(
+    () => todasFilas.filter(f => f.reloj >= jNum).length,
+    [todasFilas, jNum]
+  );
+
+  const runSim = useCallback(async () => {
+    setLoading(true); setError(null); setSelec(null);
+    try {
+      const res = await fetch("http://localhost:5000/simular", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tiempo_max:        pf(tiempoMax,    480),
+          media_llegada_emp: pf(mediaLlegEmp, 2),
+          max_cola:          pi(maxCola,      5),
+          atn_min:           pf(atnMin,       5),
+          atn_max:           pf(atnMax,       8),
+          mant_min:          pf(mantMin,      3),
+          mant_max:          pf(mantMax,      10),
+          tec_min:           pf(tecMin,       57),
+          tec_max:           pf(tecMax,       63),
+        })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setTodasFilas(data.filas || []);
+      setStats(data.stats || null);
+    } catch (e) {
+      setError("No se pudo conectar con el servidor. ¿Está corriendo simulacion.py?");
+    } finally {
+      setLoading(false);
+    }
+  }, [tiempoMax, mediaLlegEmp, maxCola, atnMin, atnMax, mantMin, mantMax, tecMin, tecMax]);
+
+  const copiarExcel = useCallback(() => {
+    if (!tableRef.current) return;
+    const rows  = tableRef.current.querySelectorAll("tr");
+    const texto = Array.from(rows)
+      .map(tr => Array.from(tr.querySelectorAll("th,td")).map(c => c.innerText).join("\t"))
+      .join("\n");
+    navigator.clipboard.writeText(texto).then(() => alert("¡Copiado! Pegalo en Excel con Ctrl+V."));
+  }, []);
+
+  const renderFila = (f, idx) => {
+    const row = transformar(f);
+    return (
+      <tr key={idx} className={selec === idx ? "selected" : ""} onClick={() => setSelec(idx)}>
+        {COLUMNAS.map((col, ci) => {
+          const raw     = row[col.key] ?? "-";
+          const display = typeof raw === "number" ? Math.trunc(raw * 100) / 100 : raw;
+          const cls     = col.cf ? col.cf(String(raw)) : "";
+          return (
+            <td key={ci} className={cls} style={{ minWidth: col.w }}>
+              {String(display)}
+            </td>
+          );
+        })}
+      </tr>
+    );
+  };
+
+  const hasSim = todasFilas.length > 0;
+
+  return (
+    <div>
+      <div className="header">
+        <h1>TP4 — Simulación: Sistemas de Colas</h1>
+        <p>Municipalidad de Río Cuarto · Grupo 22</p>
+      </div>
+
+      <div className="control-panel">
+        {/* Parámetros del sistema */}
+        <div className="panel-section">
+          <div className="section-label">Parámetros del sistema</div>
+          <div className="param-group"><label>Media ll. emp (min)</label>
+            <input type="number" value={mediaLlegEmp} step="0.1" onChange={e=>setMediaLlegEmp(e.target.value)} /></div>
+          <div className="param-group"><label>Máx. en cola</label>
+            <input type="number" value={maxCola} onChange={e=>setMaxCola(e.target.value)} /></div>
+          <div className="param-group"><label>Atención mín (min)</label>
+            <input type="number" value={atnMin} step="0.5" onChange={e=>setAtnMin(e.target.value)} /></div>
+          <div className="param-group"><label>Atención máx (min)</label>
+            <input type="number" value={atnMax} step="0.5" onChange={e=>setAtnMax(e.target.value)} /></div>
+          <div className="param-group"><label>Mantenim. mín (min)</label>
+            <input type="number" value={mantMin} step="0.5" onChange={e=>setMantMin(e.target.value)} /></div>
+          <div className="param-group"><label>Mantenim. máx (min)</label>
+            <input type="number" value={mantMax} step="0.5" onChange={e=>setMantMax(e.target.value)} /></div>
+          <div className="param-group"><label>Técnico entre mín (min)</label>
+            <input type="number" value={tecMin} onChange={e=>setTecMin(e.target.value)} /></div>
+          <div className="param-group"><label>Técnico entre máx (min)</label>
+            <input type="number" value={tecMax} onChange={e=>setTecMax(e.target.value)} /></div>
+        </div>
+
+        {/* Simulación */}
+        <div className="panel-section">
+          <div className="section-label">Simulación</div>
+          <div className="param-group"><label>Tiempo máx. (X, min)</label>
+            <input type="number" value={tiempoMax} onChange={e=>setTiempoMax(e.target.value)} /></div>
+          <button className="btn btn-primary" onClick={runSim} disabled={loading}>
+            {loading ? "Simulando..." : "▶ Simular"}
+          </button>
+          {hasSim && !loading && (
+            <div className="info-chip">
+              <b>{todasFilas.length}</b> filas · t={stats?.tiempo_simulado} min · {stats?.total_iteraciones} iter
+            </div>
+          )}
+        </div>
+
+        {/* Visualización */}
+        <div className="panel-section">
+          <div className="section-label">Visualización — filtro local, no re-simula</div>
+          <div className="param-group"><label>Hora desde (j, min)</label>
+            <input type="number" className="vis" value={horaDesde}
+              onChange={e=>{ setHoraDesde(e.target.value); setSelec(null); }} /></div>
+          <div className="param-group"><label>Cant. filas (i)</label>
+            <input type="number" className="vis" value={cantFilas}
+              onChange={e=>{ setCantFilas(e.target.value); setSelec(null); }} /></div>
+          <button className="btn btn-secondary" onClick={copiarExcel} disabled={!hasSim}>
+            📋 Copiar a Excel
+          </button>
+          {hasSim && (
+            <div className="info-chip">
+              mostrando <b>{filas.length}</b> de <b>{totalDesdeJ}</b> desde t={jNum}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="main">
+        {error   && <div className="error">{error}</div>}
+        {loading && <div className="loading">Corriendo simulación...</div>}
+
+        {hasSim && (
+          <>
+            <div className="row-title">Vector de Estado</div>
+            <div className="grid-wrapper" ref={tableRef}>
+              <table>
+                {THEAD}
+                <tbody>{filas.map((f,i) => renderFila(f,i))}</tbody>
+              </table>
+            </div>
+
+            {ultima && (
+              <>
+                <div className="row-title" style={{marginTop:20}}>
+                  Última fila — #{ultima.num}, t={ultima.reloj} min
+                </div>
+                <div className="grid-wrapper">
+                  <table>{THEAD}<tbody>{renderFila(ultima, 9999)}</tbody></table>
+                </div>
+              </>
+            )}
+
+            {stats && (
+              <>
+                <div className="row-title" style={{marginTop:20}}>Resultados Finales</div>
+                <div className="stats">
+                  <div className="stat-card"><div className="label">Total llegaron</div><div className="value">{stats.total_llegaron}</div></div>
+                  <div className="stat-card"><div className="label">Atendidos</div><div className="value">{stats.total_atendidos}</div></div>
+                  <div className="stat-card"><div className="label">Se fueron (RT)</div><div className="value">{stats.total_rt}</div></div>
+                  <div className="stat-card"><div className="label">% que se van</div><div className="value">{stats.pct_rt}%</div></div>
+                  <div className="stat-card"><div className="label">Prom. espera</div><div className="value">{stats.prom_espera} min</div></div>
+                  <div className="stat-card"><div className="label">Iteraciones</div><div className="value">{stats.total_iteraciones}</div></div>
+                  <div className="stat-card"><div className="label">Tiempo simulado</div><div className="value">{stats.tiempo_simulado} min</div></div>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
