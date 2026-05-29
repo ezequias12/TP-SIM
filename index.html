@@ -72,6 +72,7 @@
     /* Colores de estado */
     .sa    { color: #a6e3a1; }
     .ea    { color: #f9e2af; }
+    .fin   { color: #f38ba8; }
     .libre { color: #89dceb; }
     .ocup  { color: #fab387; }
     .mant  { color: #f38ba8; }
@@ -109,6 +110,7 @@ function cfTecnico(v) {
 function cfEmp(v) {
   if (v === "SA") return "sa";
   if (v === "EA") return "ea";
+  if (v === "AT") return "fin";
   return "";
 }
 
@@ -117,7 +119,7 @@ function cfEmp(v) {
 // (sin single) → <th colSpan=N> en fila 1, sub-<th> en fila 2
 const ROW1_H = 26;  // altura fija de la primera fila de encabezado (px)
 
-const GRP = [
+const GRP_STATIC = [
   // Singles con rowspan=2
   { single:true, key:"num",    label:"#",      w:48  },
   { single:true, key:"reloj",  label:"Reloj",  w:68  },
@@ -189,25 +191,13 @@ const GRP = [
     { key:"acum_espera",   label:"AcumEsp", w:68 },
     { key:"prom_espera",   label:"PromEsp", w:68 },
   ]},
-
-  // Empleados 1-9
-  ...[1,2,3,4,5,6,7,8,9].map(n => ({
-    label:`Empleado ${n}`, bg:"#0e3a2a", fg:"#a6e3a1",
-    cols:[
-      { key:`emp${n}_estado`, label:"Estado",                             w:58, cf:cfEmp },
-      { key:`emp${n}_hora`,   label: n<=4 ? "H.Llegada" : "H.Inic.Esp",  w:78 },
-    ]
-  })),
 ];
 
-// Lista plana de columnas para renderizar filas de datos
-const COLUMNAS = GRP.flatMap(g =>
+const COLUMNAS_STATIC = GRP_STATIC.flatMap(g =>
   g.single ? [{ key:g.key, w:g.w, cf:g.cf }] : g.cols
 );
 
-// ── Encabezado de 2 filas ─────────────────────────────────────────────────────
-// Construido una vez (estructura estática, no depende de estado)
-function buildThead() {
+function buildThead(grp) {
   const BASE_TH = {
     padding: "4px 8px", fontSize: "11px",
     borderRight: "1px solid #45475a", userSelect: "none", whiteSpace: "nowrap",
@@ -215,7 +205,7 @@ function buildThead() {
   const r1 = [], r2 = [];
   let isFirstCol = true;
 
-  GRP.forEach((g, gi) => {
+  grp.forEach((g, gi) => {
     if (g.single) {
       r1.push(
         <th key={`r1-${gi}`} rowSpan={2} style={{
@@ -268,8 +258,6 @@ function buildThead() {
   );
 }
 
-const THEAD = buildThead();
-
 // ── Transformación de fila backend → row ──────────────────────────────────────
 function transformar(f) {
   const row = { ...f };
@@ -278,10 +266,9 @@ function transformar(f) {
     row[`t${t.id}_pend`]   = t.pendiente;
   });
   (f.fin_at || []).forEach((v, i) => { row[`fin_at_${i+1}`] = v; });
-  (f.empleados_snap || []).forEach((e, i) => {
-    const n = i+1;
-    row[`emp${n}_estado`] = e.estado;
-    row[`emp${n}_hora`]   = n <= 4 ? e.hora_llegada : e.hora_inicio_esp;
+  (f.empleados_snap || []).forEach(e => {
+    row[`emp${e.col}_estado`] = e.estado;
+    row[`emp${e.col}_hora`]   = e.hora_inicio_esp !== "-" ? e.hora_inicio_esp : e.hora_llegada;
   });
   return row;
 }
@@ -331,10 +318,38 @@ function App() {
     [todasFilas, jNum]
   );
 
+  const activeEmpCols = useMemo(() => {
+    const cols = new Set();
+    filas.forEach(f => {
+      (f.empleados_snap || []).forEach(e => {
+        if (e.estado === "EA" || e.estado === "SA" || e.estado === "AT") cols.add(e.col);
+      });
+    });
+    return [...cols].sort((a, b) => a - b);
+  }, [filas]);
+
+  const empGRP = useMemo(() =>
+    activeEmpCols.map(n => ({
+      label: `Empleado ${n}`, bg: "#0e3a2a", fg: "#a6e3a1",
+      cols: [
+        { key: `emp${n}_estado`, label: "Estado", w: 58, cf: cfEmp },
+        { key: `emp${n}_hora`,   label: "Hora",   w: 78 },
+      ]
+    })),
+    [activeEmpCols]
+  );
+
+  const COLUMNAS = useMemo(() => [
+    ...COLUMNAS_STATIC,
+    ...empGRP.flatMap(g => g.cols)
+  ], [empGRP]);
+
+  const THEAD = useMemo(() => buildThead([...GRP_STATIC, ...empGRP]), [empGRP]);
+
   const runSim = useCallback(async () => {
     setLoading(true); setError(null); setSelec(null);
     try {
-      const res = await fetch("http://localhost:5000/simular", {
+      const res = await fetch("http://localhost:5001/simular", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -375,7 +390,7 @@ function App() {
       <tr key={idx} className={selec === idx ? "selected" : ""} onClick={() => setSelec(idx)}>
         {COLUMNAS.map((col, ci) => {
           const raw     = row[col.key] ?? "-";
-          const display = typeof raw === "number" ? Math.trunc(raw * 100) / 100 : raw;
+          const display = raw === "AT" ? "-" : (typeof raw === "number" ? Math.trunc(raw * 100) / 100 : raw);
           const cls     = col.cf ? col.cf(String(raw)) : "";
           return (
             <td key={ci} className={cls} style={{ minWidth: col.w }}>
