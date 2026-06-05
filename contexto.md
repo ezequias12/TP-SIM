@@ -1,9 +1,46 @@
 # Contexto completo — TP4 Simulación de Colas (Grupo 22)
 
+> **Documento de traspaso (handoff).** Refleja el estado del proyecto al cierre de la
+> última sesión, con TODOS los cambios aplicados. Pensado para retomar el trabajo en
+> otra sesión sin perder contexto.
+
 ## Descripción del trabajo
 
-Simulación de eventos discretos (DES) para el sistema de registro dactilar de la Municipalidad de Río Cuarto.  
-Dos archivos únicamente: `simulacion.py` (backend Flask + lógica DES) e `index.html` (frontend React CDN, sin npm).
+Simulación de eventos discretos (DES) para el sistema de registro dactilar de la
+Municipalidad de Río Cuarto.
+Dos archivos de código únicamente: `simulacion.py` (backend Flask + lógica DES) e
+`index.html` (frontend React por CDN, sin npm).
+
+---
+
+## Cómo correr (estado actual)
+
+```bash
+pip install flask flask-cors numpy
+cd TP-SIM
+python3 simulacion.py            # corre en http://localhost:5001
+# abrir index.html en el navegador (file://)
+```
+
+- **Backend escucha en el puerto `5001`** (`app.run(debug=True, port=5001)` al final de `simulacion.py`).
+- **El frontend hace fetch a `http://localhost:5001/simular`** (función `runSim` en `index.html`).
+- ⚠️ En macOS el puerto 5001 puede estar ocupado por *ControlCenter*. Si pasa, liberar
+  con `kill $(lsof -ti :5001)` o cambiar el puerto **en los dos archivos** (deben coincidir).
+
+---
+
+## Estado de Git (importante para retomar)
+
+- Repo de trabajo: **interior** en `TP2/TP-SIM/` → remote `origin = ezequias12/TP-SIM`, rama `main`.
+  (Existe además un repo "exterior" en `TP2/` rama `master` que trata a `TP-SIM` como
+  submódulo/gitlink. **Siempre operar git con `git -C .../TP-SIM ...` o parado dentro de
+  `TP-SIM/`** para no tocar el repo exterior por error.)
+- Último push hecho: merge `65960f9` ya en `origin/main`.
+- En el merge con los cambios de ezequias (que tocó los mismos archivos), se resolvió el
+  conflicto **quedándose con nuestra versión** de `index.html` y `simulacion.py`, y se
+  conservó el `README.md` que él agregó. Hablado con ezequias, OK.
+- ⚠️ **Seguridad pendiente:** la URL del remote tiene un **token `ghp_...` embebido en
+  texto plano**. Conviene revocarlo en GitHub y reconfigurar el remote sin token.
 
 ---
 
@@ -11,10 +48,12 @@ Dos archivos únicamente: `simulacion.py` (backend Flask + lógica DES) e `index
 
 - **4 terminales** de registro dactilar.
 - **Empleados** llegan con distribución exponencial negativa (media configurable, default 2 min).
-- **Técnico de mantenimiento** llega cada ~60 min ± 3 min (uniforme, rango configurable, default 57–63 min).
+- **Técnico de mantenimiento** llega cada ~60 min (uniforme, rango configurable, default 57–63 min).
 - **Tiempo de atención** de empleado: uniforme entre 5 y 8 min (configurable).
 - **Tiempo de mantenimiento** por terminal: uniforme entre 3 y 10 min (configurable).
-- **Cola máxima**: 5 empleados (configurable). Si llega cuando cola llena → se va sin volver (RT = "rechazado total").
+  El técnico genera un **RND nuevo cada vez que empieza a mantener una terminal** (ver más abajo).
+- **Cola máxima**: 5 empleados (configurable). Si un empleado llega con la cola llena → se
+  va sin volver (RT = "rechazado total") y **no ocupa columna** en la tabla.
 - Simulación corre hasta tiempo X O hasta 100.000 filas (lo que ocurra primero).
 
 ---
@@ -31,21 +70,23 @@ Dos archivos únicamente: `simulacion.py` (backend Flask + lógica DES) e `index
 | Mantenimiento máx (min) | `MANT_MAX` | 10 |
 | Técnico entre-llegada mín (min) | `TEC_MIN` | 57 |
 | Técnico entre-llegada máx (min) | `TEC_MAX` | 63 |
-| Tiempo máximo simulación (min) | (parámetro en `simular()`) | 480 |
+| Tiempo máximo simulación (min) | (parámetro `tiempo_max` en `simular()`) | 480 |
 
 ---
 
 ## Archivos
 
 ```
-simulacion.py   — Flask backend + toda la lógica DES
-index.html      — React 18 CDN (Babel standalone) frontend
+simulacion.py   — Flask backend + toda la lógica DES (corre en :5001)
+index.html      — React 18 CDN (Babel standalone) frontend (fetch a :5001)
 contexto.md     — este archivo
+enunciado.txt   — enunciado del TP
+README.md       — agregado por ezequias (incluye una imagen)
 ```
 
 ---
 
-## simulacion.py — estructura y lógica
+## simulacion.py — estructura y lógica (estado ACTUAL)
 
 ### Constantes y estado global
 
@@ -59,7 +100,12 @@ MANT_MIN, MANT_MAX = 3, 10
 TEC_MIN,  TEC_MAX  = 57, 63
 ```
 
-Estado global (reseteable): `terminales`, `tecnico`, `cola`, `empleados`, `eventos`, `reloj`, `iteracion`, `id_emp_contador`, `contador_atendidos`, `contador_rt`, `contador_llegaron`, `acum_espera`, `vector_estado`.
+Estado global (reseteable): `terminales`, `tecnico`, `cola`, `empleados`, `eventos`,
+`reloj`, `iteracion`, `id_emp_contador`, `contador_atendidos`, `contador_rt`,
+`contador_llegaron`, `acum_espera`, `vector_estado`, **`ultimo_idx_terminal`** (puntero
+round-robin de terminales).
+
+> NOTA: `col_emp_contador` **ya no existe** (se eliminó — ver cambio #6).
 
 ### Distribuciones
 
@@ -67,242 +113,179 @@ Estado global (reseteable): `terminales`, `tecnico`, `cola`, `empleados`, `event
 def trunc2(x):
     return int(x * 100) / 100   # truncar (nunca redondear) a 2 decimales
 
-def gen_llegada_emp():
+def gen_llegada_emp():     # exponencial negativa
     rnd = random.random()
-    t = trunc2(-MEDIA_LLEGADA_EMP * math.log(1 - rnd))   # exponencial negativa
-    return rnd, t
+    return rnd, trunc2(-MEDIA_LLEGADA_EMP * math.log(1 - rnd))
 
-def gen_atencion():
-    rnd = random.random()
-    t = trunc2(ATN_MIN + rnd * (ATN_MAX - ATN_MIN))       # uniforme
-    return rnd, t
-
-def gen_mantenimiento():
-    rnd = random.random()
-    t = trunc2(MANT_MIN + rnd * (MANT_MAX - MANT_MIN))    # uniforme
-    return rnd, t
-
-def gen_llegada_tec():
-    rnd = random.random()
-    t = trunc2(TEC_MIN + rnd * (TEC_MAX - TEC_MIN))       # uniforme
-    return rnd, t
+def gen_atencion():        # uniforme [ATN_MIN, ATN_MAX]
+def gen_mantenimiento():   # uniforme [MANT_MIN, MANT_MAX]  ← se llama por CADA terminal mantenida
+def gen_llegada_tec():     # uniforme [TEC_MIN, TEC_MAX]
 ```
 
-### Lógica del técnico (campo `pendiente`)
+### Asignación de terminales a empleados — ROUND-ROBIN (cambio #5)
 
-Cada terminal tiene `pendiente: bool`.  
-Al inicializar → todas `pendiente=True`.  
-Cuando el técnico termina de mantener TODAS las terminales (ronda completa) → resetea `pendiente=True` en todas y descansa.  
-El técnico NO mantiene terminales con `pendiente=False`.
-
-Estados del técnico: `"D"` (descansando), `"ETL"` (esperando terminal libre), `"RM"` (realizando mantenimiento).
-
-### `atender_cola_con_terminal` — lógica crítica
-
-Cuando una terminal queda libre, esta función decide a quién atender:
+`terminal_libre_para_emp()` ya **no** devuelve siempre la primera libre. Reparte por
+turnos (sin RNG) usando el puntero global `ultimo_idx_terminal`, empezando a buscar desde
+la terminal siguiente a la última asignada, en forma cíclica:
 
 ```python
-def atender_cola_con_terminal(terminal):
-    if not cola:
-        terminal["estado"] = "Libre"
-        return None, None
-
-    siguiente = cola[0]
-
-    if siguiente["tipo"] == "tecnico":
-        if terminal["pendiente"]:          # SOLO si necesita mantenimiento
-            cola.pop(0)
-            return asignar_tecnico_a_terminal(terminal)
-        else:
-            # Terminal ya mantenida — omitir técnico, atender empleados
-            for i, item in enumerate(cola):
-                if item["tipo"] == "empleado":
-                    cola.pop(i)
-                    return asignar_empleado_a_terminal(item["id"], terminal)
-            terminal["estado"] = "Libre"
-            return None, None
-    else:
-        cola.pop(0)
-        return asignar_empleado_a_terminal(siguiente["id"], terminal)
+def terminal_libre_para_emp():
+    global ultimo_idx_terminal
+    n = len(terminales)
+    for offset in range(1, n + 1):
+        idx = (ultimo_idx_terminal + offset) % n
+        if terminales[idx]["estado"] == "Libre":
+            ultimo_idx_terminal = idx
+            return terminales[idx]
+    return None
 ```
 
-**Prioridad**: técnico (solo si `pendiente=True`) > empleado > libre.
+- Se resetea a `-1` en `resetear_estado()` (primera asignación arranca por Terminal 1).
+- **Solo aplica a empleados.** El técnico (`terminal_libre_con_pendiente()`) quedó igual:
+  en cada ronda mantiene TODAS las terminales pendientes, así que su orden no genera sobrecarga.
 
-### `guardar_fila` — numeración secuencial
+### Empleado: columna = id de llegada (cambio #6)
+
+Cada empleado entra al dict `empleados` con `"id": emp_id` y `"col": emp_id` (el mismo
+número de llegada). Los **rechazados (RT) nunca entran al dict**, así que no aparecen en
+ningún snapshot ni ocupan columna. Resultado: la columna "Empleado N" se corresponde
+exactamente con la N-ésima llegada; los huecos (ej. falta "Empleado 46") son llegadas rechazadas.
+
+### Snapshot de empleados (cambio #3)
 
 ```python
-"num": len(vector_estado)   # 0=init, 1,2,3... — asignado ANTES del append
+def snapshot_empleados():
+    snaps = []
+    for emp in sorted(empleados.values(), key=lambda e: e["col"]):
+        snaps.append({
+            "col":             emp["col"],
+            "estado":          emp["estado"],
+            "hora_llegada":    round(emp["hora_llegada"], 2),
+            "hora_inicio_esp": round(emp["hora_inicio_esp"], 2) if emp["hora_inicio_esp"] is not None else "-",
+            "terminal_id":     emp["terminal_id"] if emp["terminal_id"] is not None else "-",
+        })
+    return snaps
 ```
 
-Guarda además `t_llegada_emp`, `t_llegada_tec`, `t_atencion`, `t_manten` (tiempos generados, no solo RNDs).
+Incluye `terminal_id` = terminal donde es atendido (o `"-"` si está en cola esperando).
+
+### Random de mantenimiento visible al disparar desde Fin Atención (cambio #1)
+
+`atender_cola_con_terminal(terminal)` ahora **retorna un dict** con las claves de los RND
+generados (`{"manten":…, "t_manten":…}` o `{"atencion":…, "t_atencion":…}` o `{}`), en vez
+de una tupla descartada. Así, cuando un **Fin Atención** libera una terminal y el técnico
+(en ETL al frente de la cola) empieza a mantenerla, el `rnd_manten`/`t_manten` queda
+guardado en esa fila:
+
+```python
+# en procesar_fin_atencion:
+rnds = atender_cola_con_terminal(term)
+guardar_fila(f"Fin Atencion T{terminal_id}", rnds)
+```
+
+### Estados
+
+- **Terminal**: `"Libre"`, `"Ocupada"`, `"Siendo mantenida"`.
+- **Técnico**: `"Descansando"` (D), `"ETL"` (esperando terminal libre), `"RM"` (realizando mantenimiento).
+- **Empleado**: `"EA"` (esperando atención), `"SA"` (siendo atendido), `"AT"` (acaba de
+  terminar / se va — visible solo en la fila de su Fin Atención, luego se borra del dict).
+
+### `atender_cola_con_terminal` — prioridad
+
+Técnico (solo si `terminal["pendiente"]==True`) > empleado > libre. Si el técnico está al
+frente pero la terminal ya fue mantenida (`pendiente=False`), se omite al técnico y se
+atiende al primer empleado de la cola.
 
 ### `procesar_fin_manten` — lógica de ronda
 
-1. Busca siguiente terminal libre con `pendiente=True` → va directo.
-2. Si no hay libre pero hay ocupada con pendiente → `ETL`, entra a cola en posición 0.
-3. Si no hay ninguna pendiente → **ronda completa**: resetea todas a `pendiente=True`, descansa, programa próxima llegada.
+1. Hay terminal libre con `pendiente=True` → el técnico va directo.
+2. No hay libre pero sí ocupada con pendiente → `ETL`, entra a cola en posición 0.
+3. Ninguna pendiente → **ronda completa**: resetea todas a `pendiente=True`, descansa,
+   programa próxima llegada del técnico.
 
 ### Endpoint Flask
 
-```python
-@app.route("/simular", methods=["POST"])
-def endpoint_simular():
-    # Sobreescribe globales antes de resetear
-    MAX_COLA = int(data.get("max_cola", 5))
-    MEDIA_LLEGADA_EMP = float(data.get("media_llegada_emp", 2.0))
-    # ... etc
-    resetear_estado()
-    vs = simular(tiempo_max)
-    # Retorna TODAS las filas — el frontend filtra por j e i
-    return jsonify({"filas": vs, "stats": stats})
-```
-
-El backend retorna TODAS las filas. No filtra por j ni i. El frontend hace el filtrado local.
+`POST /simular`: sobreescribe las globales con los parámetros del body, llama
+`resetear_estado()`, corre `simular(tiempo_max)` y devuelve `{ "filas": [...], "stats": {...} }`.
+**Retorna TODAS las filas**; el filtrado por `j` (hora desde) e `i` (cantidad) lo hace el frontend.
 
 ---
 
-## index.html — estructura
+## index.html — estructura (estado ACTUAL)
 
 ### Stack
-
-- React 18 UMD (CDN)
-- Babel Standalone para JSX
-- Sin npm, sin build step
-- Dark theme (Catppuccin Mocha)
-
-### Estado React
-
-Todos los inputs numéricos se guardan como **strings** para evitar el bug de `Number("") = 0` al borrar.  
-Se parsean solo en el momento de uso con helpers:
-
-```javascript
-const pf = (s, d) => { const n = parseFloat(s);  return isNaN(n) ? d : n; };
-const pi = (s, d) => { const n = parseInt(s, 10); return isNaN(n) ? d : n; };
-```
+React 18 UMD + Babel Standalone (CDN), sin npm/build. Dark theme (Catppuccin Mocha).
 
 ### Decoupling simulación / visualización
+- `runSim()` hace fetch a `:5001/simular` y guarda todo en `todasFilas`.
+- `j` (hora desde) e `i` (cantidad de filas) son filtros locales (`useMemo`) — **no re-simulan**.
+- Inputs numéricos guardados como **strings** (evita `Number("")=0`); se parsean con `pf()`/`pi()`.
 
-- `runSim()` hace fetch y guarda TODO en `todasFilas`.
-- `j` (hora desde) e `i` (cantidad filas) son filtros locales — NO re-simulan.
-- `filas`, `ultima`, `totalDesdeJ` son `useMemo` sobre `todasFilas`.
-- Cambiar j o i nunca llama al backend.
+### Columnas de empleado (DINÁMICAS, cambios #3, #4, #6)
+- `activeEmpCols` recolecta los `col` (= id de llegada) que aparecen en las filas visibles
+  con estado `EA`, `SA` o `AT`. Los rechazados nunca aparecen → no generan columna.
+- `empGRP` arma un grupo por cada empleado activo con **3 sub-columnas**:
+  `Estado`, `Hora`, **`Term.`** (terminal donde es atendido).
+- `transformar(f)` mapea el snapshot a las claves de fila. Cuando el empleado **se va**
+  (estado `"AT"`), blanquea hora y terminal:
+
+```javascript
+(f.empleados_snap || []).forEach(e => {
+  const seFue = e.estado === "AT";               // fin de atención → ya se fue
+  row[`emp${e.col}_estado`] = e.estado;
+  row[`emp${e.col}_hora`]   = seFue ? "-" : (e.hora_inicio_esp !== "-" ? e.hora_inicio_esp : e.hora_llegada);
+  row[`emp${e.col}_term`]   = seFue ? "-" : e.terminal_id;
+});
+```
+
+### Render: la "x" roja al irse (cambio #4)
+En la celda, el estado `"AT"` se muestra como **`"x"`** (en rojo vía `cfEmp` → clase `.fin`),
+mientras que hora y `Term.` muestran `"-"`:
+
+```javascript
+const display = raw === "AT" ? "x" : (typeof raw === "number" ? Math.trunc(raw * 100) / 100 : raw);
+```
+
+Todos los números se **truncan** (no redondean) a 2 decimales en display.
 
 ### Encabezados agrupados de 2 niveles
-
-Definidos en constante `GRP`:
-
-```javascript
-const GRP = [
-  { single:true, key:"num",    label:"#",      w:48  },
-  { single:true, key:"reloj",  label:"Reloj",  w:68  },
-  { single:true, key:"evento", label:"Evento", w:210 },
-  { label:"Llegada Empleado",   bg:"#5c3800", fg:"#ffb86c", cols:[
-    { key:"rnd_llegada_emp", label:"RND",    w:72 },
-    { key:"t_llegada_emp",   label:"T.entr", w:65 },
-    { key:"prox_emp",        label:"Próx.",  w:68 },
-  ]},
-  { label:"Llegada Técnico",    bg:"#5c3800", fg:"#ffb86c", cols:[...] },
-  { label:"Fin Atención",       bg:"#4a4000", fg:"#f9e2af", cols:[...] },
-  { label:"Fin Mantenimiento",  bg:"#1e4020", fg:"#a6e3a1", cols:[...] },
-  { label:"Terminal 1", bg:"#0e3a2a", fg:"#89dceb", cols:[{key:"t1_estado",...},{key:"t1_pend",...}] },
-  // Terminal 2, 3, 4 igual
-  { single:true, key:"cola_largo", label:"Cola", w:52 },
-  { label:"Técnico",      bg:"#30205a", fg:"#cba6f7", cols:[...] },
-  { label:"Estadísticas", bg:"#1a2250", fg:"#89b4fa", cols:[...] },
-  // Empleado 1..9
-  ...[1,2,3,4,5,6,7,8,9].map(n => ({
-    label:`Empleado ${n}`, bg:"#0e3a2a", fg:"#a6e3a1",
-    cols:[
-      { key:`emp${n}_estado`, label:"Estado", w:58, cf:cfEmp },
-      { key:`emp${n}_hora`,   label: n<=4 ? "H.Llegada" : "H.Inic.Esp", w:78 },
-    ]
-  })),
-];
-```
-
-`single:true` → `rowSpan=2` en fila 1, nada en fila 2.  
-Grupos → `colSpan=N` en fila 1, sub-headers en fila 2.
-
-`COLUMNAS` = lista plana derivada de `GRP` para renderizar celdas de datos:
-
-```javascript
-const COLUMNAS = GRP.flatMap(g =>
-  g.single ? [{ key:g.key, w:g.w, cf:g.cf }] : g.cols
-);
-```
-
-`buildThead()` construye el `<thead>` con sticky positioning:
-
-```javascript
-const ROW1_H = 26;  // px, altura fija fila 1
-// singles: top:0, zIndex:9 (si es primera col) o 7
-// group headers fila 1: top:0, zIndex:6
-// sub-headers fila 2: top:ROW1_H, zIndex:5
-// tbody primera col: position:sticky, left:0, zIndex:2
-```
-
-`THEAD = buildThead()` — computado una vez a nivel módulo (estructura estática).
-
-### Transformación backend → fila
-
-```javascript
-function transformar(f) {
-  const row = { ...f };
-  (f.terminales || []).forEach(t => {
-    row[`t${t.id}_estado`] = t.estado;
-    row[`t${t.id}_pend`]   = t.pendiente;
-  });
-  (f.fin_at || []).forEach((v, i) => { row[`fin_at_${i+1}`] = v; });
-  (f.empleados_snap || []).forEach((e, i) => {
-    const n = i+1;
-    row[`emp${n}_estado`] = e.estado;
-    row[`emp${n}_hora`]   = n <= 4 ? e.hora_llegada : e.hora_inicio_esp;
-  });
-  return row;
-}
-```
-
-### Truncado en display
-
-```javascript
-const display = typeof raw === "number" ? Math.trunc(raw * 100) / 100 : raw;
-```
-
-Todos los números se truncan (no redondean) a 2 decimales en pantalla.
+`GRP_STATIC` (columnas fijas) + `empGRP` (empleados dinámicos). `single:true` → `rowSpan=2`.
+`buildThead()` arma el `<thead>` con sticky positioning (fila 1 `top:0`, fila 2 `top:ROW1_H`,
+primera columna `#` sticky a la izquierda). `COLUMNAS` = lista plana derivada para las celdas.
 
 ---
 
-## Bugs corregidos (historial)
+## Resumen de TODOS los cambios de esta sesión
 
-### 1. Doble fila con num=0
+1. **Random de mantenimiento visible desde Fin Atención** — `atender_cola_con_terminal`
+   ahora retorna un dict de RNDs y `procesar_fin_atencion` lo pasa a `guardar_fila`
+   (antes se pasaba `{}` y se perdía el `rnd_manten`/`t_manten`).
+2. *(refactor del punto 1: el retorno tupla `(None,None)` pasó a ser dict `{}`).*
+3. **Atributo `terminal_id` del empleado** — agregado al snapshot del backend y nueva
+   sub-columna **"Term."** por empleado en el frontend (muestra la terminal de atención,
+   o `-` si está en cola).
+4. **"x" roja al irse el empleado** — en la fila de su Fin Atención, estado = `"x"` (rojo),
+   y hora + terminal = `"-"` (ya se fue).
+5. **Asignación round-robin de terminales a empleados** — `terminal_libre_para_emp()` rota
+   por turnos con `ultimo_idx_terminal` (sin RNG); reparte la carga, no satura la Terminal 1.
+   No aplica al técnico.
+6. **Columna = id de llegada del empleado** — se eliminó `col_emp_contador`; `col = emp_id`.
+   Los rechazados (RT) no ocupan columna y cada llegada se corresponde con su propia columna
+   (con huecos en los rechazados).
+7. **Infra/Git** — puerto unificado en 5001 (backend + fetch del frontend); commit y push a
+   `origin/main`; merge con los cambios de ezequias resuelto a favor de nuestra versión.
 
-**Problema**: `guardar_fila` usaba `"num": iteracion`. La fila de init se guarda con `iteracion=0`, y el primer evento del loop también usa `iteracion=0` (se incrementa después del `guardar_fila`).  
-**Fix**: `"num": len(vector_estado)` — índice secuencial asignado antes del append.
+---
 
-### 2. MAX_ITER off-by-one (100.001 filas)
+## Bugs corregidos en sesiones anteriores (historial)
 
-**Problema**: Con `MAX_ITER=100000`, el loop `while iteracion < MAX_ITER` corre 100.000 veces + la fila de init = 100.001 filas.  
-**Fix**: `MAX_ITER = 99999` → init (fila 0) + 99.999 eventos = exactamente 100.000 filas máximo.
-
-### 3. Bug de borrado en inputs numéricos
-
-**Problema**: `onChange={e => setState(Number(e.target.value))}` → al borrar el campo queda `Number("") = 0`, React re-renderiza con 0, usuario no puede escribir otro número.  
-**Fix**: Todos los estados numéricos almacenados como strings. Se parsean solo al usar con `pf()` / `pi()`.
-
-### 4. Re-mantenimiento incorrecto de terminales
-
-**Problema**: En `procesar_fin_manten`, cuando no había otra terminal pendiente y el técnico entraba a la cola como ETL, luego `atender_cola_con_terminal(term_actual)` asignaba el técnico a esa misma terminal ya mantenida (`pendiente=False`).  
-**Fix**: En `atender_cola_con_terminal`, verificar `if terminal["pendiente"]` antes de asignar el técnico. Si `pendiente=False`, saltar al técnico y buscar el primer empleado en la cola.
-
-### 5. Columnas t_* faltantes en backend
-
-**Problema**: `guardar_fila` solo almacenaba los RNDs pero no los tiempos generados (`t_llegada_emp`, `t_llegada_tec`, `t_atencion`, `t_manten`).  
-**Fix**: En cada call site de `guardar_fila`, agregar las claves `t_*` al dict `rnds`, y en `guardar_fila` leerlas con `rnds.get("t_llegada_emp", "-")` etc.
-
-### 6. Sticky headers mal aplicados (CSS vs inline style)
-
-**Problema**: Regla CSS `thead th:first-child { position: sticky; left: 0 }` aplicaba sticky-left al primer `<th>` de la fila 2 del thead, no solo a la columna `#`.  
-**Fix**: Eliminar esa regla CSS. Manejar todo sticky por inline style dentro de `buildThead()`. Solo el `<th rowSpan=2>` de `#` tiene `left:0`.
+1. **Doble fila con num=0** → `"num": len(vector_estado)` (índice secuencial pre-append).
+2. **MAX_ITER off-by-one** → `MAX_ITER = 99999` (init + 99.999 eventos = 100.000 filas).
+3. **Borrado en inputs numéricos** → estados como strings, parseo con `pf()`/`pi()`.
+4. **Re-mantenimiento incorrecto** → `atender_cola_con_terminal` chequea `terminal["pendiente"]`
+   antes de asignar el técnico; si `False`, salta al técnico y atiende empleados.
+5. **Columnas `t_*` faltantes** → `guardar_fila` lee `t_llegada_emp`, `t_atencion`, etc.
+6. **Sticky headers (CSS vs inline)** → todo el sticky se maneja por inline style en `buildThead()`.
 
 ---
 
@@ -315,50 +298,26 @@ Todos los números se truncan (no redondean) a 2 decimales en pantalla.
 | Llegada Técnico | RND, T.entr, Próx. |
 | Fin Atención | RND, T.at, At 1, At 2, At 3, At 4 |
 | Fin Mantenimiento | RND, T.mant, Fin |
-| Terminal 1 | Estado, Pend. |
-| Terminal 2 | Estado, Pend. |
-| Terminal 3 | Estado, Pend. |
-| Terminal 4 | Estado, Pend. |
+| Terminal 1..4 | Estado, Pend. |
 | (single) | Cola |
 | Técnico | Estado, Term. |
 | Estadísticas | Aten., RT, % RT, AcumEsp, PromEsp |
-| Empleado 1..4 | Estado, H.Llegada |
-| Empleado 5..9 | Estado, H.Inic.Esp |
+| Empleado N (dinámico, N = id de llegada) | **Estado, Hora, Term.** |
 
 ---
 
 ## Colores del frontend
 
-Estados de terminal: Libre → cyan (`#89dceb`), Ocupada → naranja (`#fab387`), Siendo mantenida → rojo (`#f38ba8`).  
-Estados técnico: D → gris, ETL → amarillo, RM → rojo.  
-Estados empleado: SA (siendo atendido) → verde, EA (esperando atención) → amarillo.
-
-Grupos de encabezado:
-- Llegada Empleado / Llegada Técnico → naranja oscuro `#5c3800` / `#ffb86c`
-- Fin Atención → amarillo oscuro `#4a4000` / `#f9e2af`
-- Fin Mantenimiento → verde oscuro `#1e4020` / `#a6e3a1`
-- Terminales / Empleados → verde azulado oscuro `#0e3a2a` / `#89dceb` (terminales), `#a6e3a1` (empleados)
-- Técnico → violeta oscuro `#30205a` / `#cba6f7`
-- Estadísticas → azul oscuro `#1a2250` / `#89b4fa`
-- Singles (#, Reloj, Evento, Cola) → `#313244` / `#b4befe`
-
----
-
-## Cómo correr
-
-```bash
-pip install flask flask-cors numpy
-python simulacion.py    # corre en localhost:5000
-# abrir index.html en el navegador
-```
+- Terminal: Libre → cyan (`#89dceb`), Ocupada → naranja (`#fab387`), Siendo mantenida → rojo (`#f38ba8`).
+- Técnico: D → gris, ETL → amarillo, RM → rojo.
+- Empleado: SA → verde, EA → amarillo, **AT → rojo (la "x")**.
 
 ---
 
 ## Decisiones de diseño
 
-- **Sin npm/bundler**: React y Babel desde CDN. Abre como `file://` directamente.
-- **Backend retorna todo**: El endpoint devuelve todas las filas; `j` e `i` son filtros puramente de visualización en el frontend (sin re-simular).
-- **`trunc2` = truncar nunca redondear**: Requerimiento explícito del enunciado. `int(x * 100) / 100` en Python, `Math.trunc(raw * 100) / 100` en JS.
-- **`THEAD` estático**: `buildThead()` se llama una vez a nivel módulo. No re-renderiza con el estado.
-- **`COLUMNAS` plano**: Derivado de `GRP` para que la definición de grupos sea la única fuente de verdad tanto para headers como para data cells.
-- **Empleados snap**: Se guarda snapshot de los primeros 9 empleados activos por fila. Empleados 1-4 muestran hora de llegada; 5-9 muestran hora inicio espera (siguiendo convención del Excel de referencia).
+- **Sin npm/bundler**: React y Babel por CDN; abre como `file://`.
+- **Backend retorna todo**: `j` e `i` son filtros de visualización (no re-simulan).
+- **`trunc2` = truncar, nunca redondear**: requerimiento del enunciado.
+- **Round-robin sin RNG**: reparto determinista y reproducible de terminales a empleados.
+- **`col = emp_id`**: una columna por empleado que efectivamente entró al sistema.
