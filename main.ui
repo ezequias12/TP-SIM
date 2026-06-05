@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>1400</width><height>960</height></rect>
+  </property>
+  <property name="windowTitle">
+   <string>TP4 — Simulación: Sistemas de Colas</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="layout_main">
+    <property name="spacing"><number>10</number></property>
+    <property name="leftMargin"><number>16</number></property>
+    <property name="topMargin"><number>16</number></property>
+    <property name="rightMargin"><number>16</number></property>
+    <property name="bottomMargin"><number>16</number></property>
+
+    <item>
+     <widget class="QLabel" name="lbl_titulo">
+      <property name="text"><string>TP4 — Simulación: Sistemas de Colas</string></property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QLabel" name="lbl_subtitulo">
+      <property name="text"><string>Municipalidad de Río Cuarto · Grupo 22</string></property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QFrame" name="line">
+      <property name="frameShape"><enum>QFrame::HLine</enum></property>
+      <property name="frameShadow"><enum>QFrame::Sunken</enum></property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QGroupBox" name="grp_params">
+      <property name="title"><string>PARÁMETROS DEL SISTEMA</string></property>
+      <layout class="QGridLayout" name="layout_params">
+       <property name="spacing"><number>6</number></property>
+       <property name="leftMargin"><number>8</number></property>
+       <property name="topMargin"><number>8</number></property>
+       <property name="rightMargin"><number>8</number></property>
+       <property name="bottomMargin"><number>8</number></property>
+       <item row="0" column="0">
+        <widget class="QLabel" name="lbl_ml"><property name="text"><string>Media ll. emp (min)</string></property></widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QLineEdit" name="txt_media_llegada"><property name="text"><string>2</string></property></widget>
+       </item>
+       <item row="0" column="2">
+        <widget class="QLabel" name="lbl_mc"><property name="text"><string>Máx. en cola</string></property></widget>
+       </item>
+       <item row="0" column="3">
+        <widget class="QLineEdit" name="txt_max_cola"><property name="text"><string>5</string></property></widget>
+       </item>
+       <item row="0" column="4">
+        <widget class="QLabel" name="lbl_amin"><property name="text"><string>Atención min (min)</string></property></widget>
+       </item>
+       <item row="0" column="5">
+        <widget class="QLineEdit" name="txt_atn_min"><property name="text"><string>5</string></property></widget>
+       </item>
+       <item row="0" column="6">
+        <widget class="QLabel" name="lbl_amax"><property name="text"><string>Atención máx (min)</string></property></widget>
+       </item>
+       <item row="0" column="7">
+        <widget class="QLineEdit" name="txt_atn_max"><property name="text"><string>8</string></property></widget>
+       </item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="lbl_mmin"><property name="text"><string>Mantenim. min (min)</string></property></widget>
+       </item>
+       <item row="1" column="1">
+        <widget class="QLineEdit" name="txt_mant_min"><property name="text"><string>3</string></property></widget>
+       </item>
+       <item row="1" column="2">
+        <widget class="QLabel" name="lbl_mmax"><property name="text"><string>Mantenim. máx (min)</string></property></widget>
+       </item>
+       <item row="1" column="3">
+        <widget class="QLineEdit" name="txt_mant_max"><property name="text"><string>10</string></property></widget>
+       </item>
+       <item row="1" column="4">
+        <widget class="QLabel" name="lbl_tmin"><property name="text"><string>Técnico entre min (min)</string></property></widget>
+       </item>
+       <item row="1" column="5">
+        <widget class="QLineEdit" name="txt_tec_min"><property name="text"><string>57</string></property></widget>
+       </item>
+       <item row="1" column="6">
+        <widget class="QLabel" name="lbl_tmax"><property name="text"><string>Técnico entre máx (min)</string></property></widget>
+       </item>
+       <item row="1" column="7">
+        <widget class="QLineEdit" name="txt_tec_max"><property name="text"><string>63</string></property></widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QGroupBox" name="grp_sim">
+      <property name="title"><string>SIMULACIÓN</string></property>
+      <layout class="QHBoxLayout" name="layout_sim">
+       <property name="spacing"><number>6</number></property>
+       <property name="leftMargin"><number>8</number></property>
+       <property name="topMargin"><number>8</number></property>
+       <property name="rightMargin"><number>8</number></property>
+       <property name="bottomMargin"><number>8</number></property>
+       <item>
+        <widget class="QLabel" name="lbl_tmax_label"><property name="text"><string>Tiempo máx. (X, min)</string></property></widget>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="txt_tiempo_max"><property name="text"><string>480</string></property></widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btn_simular"><property name="text"><string>▶  Simular</string></property></widget>
+       </item>
+       <item>
+        <widget class="QProgressBar" name="prg_sim">
+         <property name="maximumWidth"><number>160</number></property>
+         <property name="minimum"><number>0</number></property>
+         <property name="maximum"><number>0</number></property>
+         <property name="textVisible"><bool>false</bool></property>
+         <property name="visible"><bool>false</bool></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="lbl_info"><property name="text"><string></string></property></widget>
+       </item>
+       <item>
+        <spacer name="spacer_sim">
+         <property name="orientation"><enum>Qt::Horizontal</enum></property>
+         <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QFrame" name="line2">
+      <property name="frameShape"><enum>QFrame::HLine</enum></property>
+      <property name="frameShadow"><enum>QFrame::Sunken</enum></property>
+     </widget>
+    </item>
+
+    <item>
+     <widget class="QGroupBox" name="grp_vis">
+      <property name="title"><string>VISUALIZACIÓN — FILTRO LOCAL, NO RE-SIMULA</string></property>
+      <layout class="QHBoxLayout" name="layout_vis">
+       <property name="spacing"><number>6</number></property>
+       <property name="leftMargin"><number>8</number></property>
+       <property name="topMargin"><number>8</number></property>
+       <property name="rightMargin"><number>8</number></property>
+       <property name="bottomMargin"><number>8</number></property>
+       <item>
+        <widget class="QLabel" name="lbl_j"><property name="text"><string>Hora desde (j, min)</string></property></widget>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="txt_hora_desde"><property name="text"><string>0</string></property></widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="lbl_i"><property name="text"><string>Cant. filas (i)</string></property></widget>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="txt_cant_filas"><property name="text"><string>20</string></property></widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btn_copiar"><property name="text"><string>Copiar a Excel</string></property></widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="lbl_filtro"><property name="text"><string></string></property></widget>
+       </item>
+       <item>
+        <spacer name="spacer_vis">
+         <property name="orientation"><enum>Qt::Horizontal</enum></property>
+         <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+    </item>
+
+    <!-- Tabla principal del vector de estado (QTableView = renderizado virtual) -->
+    <item>
+     <widget class="QTableView" name="tbl_vector">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+        <horstretch>0</horstretch>
+        <verstretch>1</verstretch>
+       </sizepolicy>
+      </property>
+     </widget>
+    </item>
+
+    <!-- Título de la última fila -->
+    <item>
+     <widget class="QLabel" name="lbl_ultima">
+      <property name="text"><string></string></property>
+     </widget>
+    </item>
+
+    <!-- Tabla con la última fila de la simulación (altura fija, sin filtro) -->
+    <item>
+     <widget class="QTableView" name="tbl_ultima">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+     </widget>
+    </item>
+
+    <!-- Panel de tarjetas de estadísticas finales (llenado en Python) -->
+    <item>
+     <widget class="QFrame" name="pnl_stats">
+      <property name="frameShape"><enum>QFrame::NoFrame</enum></property>
+     </widget>
+    </item>
+
+   </layout>
+  </widget>
+ </widget>
+</ui>

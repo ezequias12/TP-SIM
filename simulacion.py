@@ -1,11 +1,8 @@
+import heapq
 import math
 import random
-import numpy as np
-from flask import Flask, jsonify, request
-from flask_cors import CORS
 
 # ── Constantes ────────────────────────────────────────────────────────────────
-N_TERMINALES      = 4
 MAX_COLA          = 5
 MAX_ITER          = 99999  # init ocupa fila 0, eventos 1..99999 → 100.000 filas total
 MEDIA_LLEGADA_EMP = 2.0
@@ -28,6 +25,7 @@ contador_llegaron = 0
 acum_espera       = 0.0
 vector_estado     = []
 ultimo_idx_terminal = -1  # round-robin: índice de la última terminal asignada a un empleado
+_seq              = 0     # contador monótono para desempate estable en la cola de eventos (heapq)
 
 
 # ── Variables aleatorias ──────────────────────────────────────────────────────
@@ -59,15 +57,23 @@ def gen_llegada_tec():
     return rnd, t
 
 
-# ── Auxiliares ────────────────────────────────────────────────────────────────
+# ── Cola de eventos (heap binario, O(log n) por inserción/extracción) ──────────
+# Evento = (tiempo, seq, tipo, id). `seq` (monótono) desempata por orden de
+# inserción cuando dos eventos tienen el mismo tiempo, replicando exactamente el
+# orden del antiguo min() lineal sobre la lista en orden de inserción.
+def push_evento(tiempo, tipo, eid=None):
+    global _seq
+    heapq.heappush(eventos, (tiempo, _seq, tipo, eid))
+    _seq += 1
+
+
 def siguiente_evento():
-    idx = int(np.argmin([e["tiempo"] for e in eventos]))
-    return eventos.pop(idx)
+    return heapq.heappop(eventos)
 
 
 def tiempo_de(tipo):
-    tiempos = [e["tiempo"] for e in eventos if e["tipo"] == tipo]
-    return round(min(tiempos), 2) if tiempos else "-"
+    tiempos = [e[0] for e in eventos if e[2] == tipo]
+    return min(tiempos) if tiempos else None
 
 
 def terminal_libre_para_emp():
@@ -97,61 +103,42 @@ def emp_en_cola():
 
 
 def snapshot_empleados():
-    snaps = []
-    for emp in sorted(empleados.values(), key=lambda e: e["col"]):
-        snaps.append({
-            "col":             emp["col"],
-            "estado":          emp["estado"],
-            "hora_llegada":    round(emp["hora_llegada"], 2),
-            "hora_inicio_esp": round(emp["hora_inicio_esp"], 2) if emp["hora_inicio_esp"] is not None else "-",
-            "terminal_id":     emp["terminal_id"] if emp["terminal_id"] is not None else "-",
-        })
-    return snaps
+    # dict {col: (estado, hora_inicio_esp, hora_llegada, terminal_id)} — acceso O(1)
+    # por columna desde el modelo y mucho más compacto que una lista de dicts.
+    # Valores crudos (sin redondear): el formateo se hace al mostrar.
+    return {
+        emp["col"]: (emp["estado"], emp["hora_inicio_esp"], emp["hora_llegada"], emp["terminal_id"])
+        for emp in empleados.values()
+    }
 
 
 def guardar_fila(evento_nombre, rnds):
-    pct_rt   = round((contador_rt / contador_llegaron * 100), 2) if contador_llegaron > 0 else 0
-    prom_esp = round((acum_espera / contador_atendidos), 3)       if contador_atendidos > 0 else 0
-
-    fila = {
-        "num":             len(vector_estado),  # índice secuencial: 0=init, 1,2,3...
-        "reloj":           round(reloj, 2),
-        "evento":          evento_nombre,
-        "prox_emp":        tiempo_de("llegada_emp"),
-        "prox_tec":        tiempo_de("llegada_tec"),
-        "terminales": [
-            {
-                "id":       t["id"],
-                "estado":   t["estado"],
-                "pendiente": "SI" if t["pendiente"] else "NO",
-                "fin_aten": round(t["fin_aten"], 2) if t["fin_aten"] else "-"
-            }
-            for t in terminales
-        ],
-        "fin_at": [
-            round(t["fin_aten"], 2) if t["fin_aten"] else "-"
-            for t in terminales
-        ],
-        "fin_mant":        round(tecnico["fin_manten"], 2) if tecnico["fin_manten"] else "-",
-        "tec_estado":      tecnico["estado"],
-        "tec_terminal":    tecnico["terminal_id"] if tecnico["terminal_id"] else "-",
-        "cola_largo":      len(cola),
-        "cnt_atendidos":   contador_atendidos,
-        "cnt_rt":          contador_rt,
-        "pct_rt":          pct_rt,
-        "acum_espera":     round(acum_espera, 2),
-        "prom_espera":     prom_esp,
-        "rnd_llegada_emp": rnds.get("llegada_emp", "-"),
-        "t_llegada_emp":   rnds.get("t_llegada_emp", "-"),
-        "rnd_atencion":    rnds.get("atencion", "-"),
-        "t_atencion":      rnds.get("t_atencion", "-"),
-        "rnd_llegada_tec": rnds.get("llegada_tec", "-"),
-        "t_llegada_tec":   rnds.get("t_llegada_tec", "-"),
-        "rnd_manten":      rnds.get("manten", "-"),
-        "t_manten":        rnds.get("t_manten", "-"),
-        "empleados_snap":  snapshot_empleados()
-    }
-    vector_estado.append(fila)
+    # Fila compacta con valores CRUDOS. Todo el formateo (truncado a 2 decimales,
+    # "SI"/"NO", "-", %RT, prom. espera) se difiere al modelo, que solo formatea
+    # las celdas visibles. Así el loop de simulación no construye strings ni redondea.
+    vector_estado.append({
+        "num":      len(vector_estado),     # índice secuencial: 0=init, 1,2,3...
+        "reloj":    reloj,
+        "evento":   evento_nombre,
+        "prox_emp": tiempo_de("llegada_emp"),
+        "prox_tec": tiempo_de("llegada_tec"),
+        "term_est":  [t["estado"]    for t in terminales],   # 4 strings
+        "term_pend": [t["pendiente"] for t in terminales],   # 4 bools
+        "term_fin":  [t["fin_aten"]  for t in terminales],   # 4 float|None (sustituye al antiguo fin_at duplicado)
+        "fin_mant":  tecnico["fin_manten"],
+        "tec_est":   tecnico["estado"],
+        "tec_term":  tecnico["terminal_id"],
+        "cola":      len(cola),
+        "n_at":      contador_atendidos,
+        "n_rt":      contador_rt,
+        "n_lleg":    contador_llegaron,
+        "acum_esp":  acum_espera,
+        "rnd_le": rnds.get("llegada_emp"), "t_le": rnds.get("t_llegada_emp"),
+        "rnd_at": rnds.get("atencion"),    "t_at": rnds.get("t_atencion"),
+        "rnd_lt": rnds.get("llegada_tec"), "t_lt": rnds.get("t_llegada_tec"),
+        "rnd_mt": rnds.get("manten"),      "t_mt": rnds.get("t_manten"),
+        "emp":    snapshot_empleados(),
+    })
 
 
 # ── Asignaciones ──────────────────────────────────────────────────────────────
@@ -167,7 +154,7 @@ def asignar_empleado_a_terminal(emp_id, terminal):
     empleados[emp_id]["terminal_id"]     = terminal["id"]
     empleados[emp_id]["hora_asignacion"] = reloj
 
-    eventos.append({"tipo": "fin_atencion", "tiempo": fin, "id": terminal["id"]})
+    push_evento(fin, "fin_atencion", terminal["id"])
     return rnd_a, t_a
 
 
@@ -177,11 +164,11 @@ def asignar_tecnico_a_terminal(terminal):
 
     terminal["estado"]     = "Siendo mantenida"
     terminal["pendiente"]  = False
-    tecnico["estado"]      = "RM"
+    tecnico["estado"]      = "Realizando Mantenimiento"
     tecnico["terminal_id"] = terminal["id"]
     tecnico["fin_manten"]  = fin
 
-    eventos.append({"tipo": "fin_manten", "tiempo": fin, "id": terminal["id"]})
+    push_evento(fin, "fin_manten", terminal["id"])
     return rnd_m, t_m
 
 
@@ -251,7 +238,7 @@ def procesar_llegada_emp():
     rnd_e, t_e = gen_llegada_emp()
     rnds["llegada_emp"]   = rnd_e
     rnds["t_llegada_emp"] = t_e
-    eventos.append({"tipo": "llegada_emp", "tiempo": round(reloj + t_e, 2), "id": None})
+    push_evento(round(reloj + t_e, 2), "llegada_emp")
 
     guardar_fila(f"Llegada Empleado {emp_id}", rnds)
 
@@ -290,13 +277,13 @@ def procesar_llegada_tec():
         rnds["manten"]   = rnd_m
         rnds["t_manten"] = t_m
     elif hay_pendiente_ocupada():
-        tecnico["estado"] = "ETL"
+        tecnico["estado"] = "Esperando Terminal Libre"
         cola.insert(0, {"tipo": "tecnico"})
     else:
         rnd_t, t_t = gen_llegada_tec()
         rnds["llegada_tec"]   = rnd_t
         rnds["t_llegada_tec"] = t_t
-        eventos.append({"tipo": "llegada_tec", "tiempo": round(reloj + t_t, 2), "id": None})
+        push_evento(round(reloj + t_t, 2), "llegada_tec")
 
     guardar_fila("Llegada Tecnico", rnds)
 
@@ -322,7 +309,7 @@ def procesar_fin_manten(terminal_id):
 
     elif sig_ocupada:
         # Esperar al frente de la cola
-        tecnico["estado"] = "ETL"
+        tecnico["estado"] = "Esperando Terminal Libre"
         cola.insert(0, {"tipo": "tecnico"})
         term_actual["estado"] = "Libre"
         atender_cola_con_terminal(term_actual)
@@ -335,7 +322,7 @@ def procesar_fin_manten(terminal_id):
         rnd_t, t_t = gen_llegada_tec()
         rnds["llegada_tec"]   = rnd_t
         rnds["t_llegada_tec"] = t_t
-        eventos.append({"tipo": "llegada_tec", "tiempo": round(reloj + t_t, 2), "id": None})
+        push_evento(round(reloj + t_t, 2), "llegada_tec")
         term_actual["estado"] = "Libre"
         atender_cola_con_terminal(term_actual)
 
@@ -347,10 +334,10 @@ def simular(tiempo_max):
     global reloj, iteracion
 
     rnd_e, t_e = gen_llegada_emp()
-    eventos.append({"tipo": "llegada_emp", "tiempo": t_e, "id": None})
+    push_evento(t_e, "llegada_emp")
 
     rnd_t, t_t = gen_llegada_tec()
-    eventos.append({"tipo": "llegada_tec", "tiempo": t_t, "id": None})
+    push_evento(t_t, "llegada_tec")
 
     guardar_fila("Inicializacion", {
         "llegada_emp": rnd_e, "t_llegada_emp": t_e,
@@ -361,36 +348,31 @@ def simular(tiempo_max):
         if not eventos:
             break
 
-        ev    = siguiente_evento()
-        reloj = ev["tiempo"]
+        tiempo, _, tipo, eid = siguiente_evento()
+        reloj = tiempo
 
         if reloj > tiempo_max:
             break
 
-        if ev["tipo"] == "llegada_emp":
+        if tipo == "llegada_emp":
             procesar_llegada_emp()
-        elif ev["tipo"] == "fin_atencion":
-            procesar_fin_atencion(ev["id"])
-        elif ev["tipo"] == "llegada_tec":
+        elif tipo == "fin_atencion":
+            procesar_fin_atencion(eid)
+        elif tipo == "llegada_tec":
             procesar_llegada_tec()
-        elif ev["tipo"] == "fin_manten":
-            procesar_fin_manten(ev["id"])
+        elif tipo == "fin_manten":
+            procesar_fin_manten(eid)
 
         iteracion += 1
 
     return vector_estado
 
 
-# ── Flask ─────────────────────────────────────────────────────────────────────
-app = Flask(__name__)
-CORS(app, origins="*")
-
-
 def resetear_estado():
     global terminales, tecnico, cola, empleados, eventos
     global reloj, iteracion, id_emp_contador
     global contador_atendidos, contador_rt, contador_llegaron, acum_espera
-    global vector_estado, ultimo_idx_terminal
+    global vector_estado, ultimo_idx_terminal, _seq
 
     terminales = [
         {"id": i, "estado": "Libre", "pendiente": True, "fin_aten": None, "emp_id": None}
@@ -409,48 +391,4 @@ def resetear_estado():
     acum_espera        = 0.0
     vector_estado      = []
     ultimo_idx_terminal = -1
-
-
-@app.route("/simular", methods=["POST"])
-def endpoint_simular():
-    global MAX_COLA, MEDIA_LLEGADA_EMP, ATN_MIN, ATN_MAX, MANT_MIN, MANT_MAX, TEC_MIN, TEC_MAX
-
-    data       = request.get_json()
-    tiempo_max = float(data.get("tiempo_max", 480))
-
-    # Parámetros del sistema (modificables desde el frontend)
-    MAX_COLA          = int(data.get("max_cola", 5))
-    MEDIA_LLEGADA_EMP = float(data.get("media_llegada_emp", 2.0))
-    ATN_MIN           = float(data.get("atn_min", 5))
-    ATN_MAX           = float(data.get("atn_max", 8))
-    MANT_MIN          = float(data.get("mant_min", 3))
-    MANT_MAX          = float(data.get("mant_max", 10))
-    TEC_MIN           = float(data.get("tec_min", 57))
-    TEC_MAX           = float(data.get("tec_max", 63))
-
-    resetear_estado()
-    vs = simular(tiempo_max)
-
-    # j e i son filtros de visualización — el frontend los aplica sobre todas las filas
-    cnt_aten = vs[-1]["cnt_atendidos"] if vs else 0
-    prom_espera_final = round(vs[-1]["acum_espera"] / cnt_aten, 3) if cnt_aten > 0 else 0
-
-    stats = {
-        "total_llegaron":    cnt_aten + (vs[-1]["cnt_rt"] if vs else 0),
-        "total_atendidos":   cnt_aten,
-        "total_rt":          vs[-1]["cnt_rt"]  if vs else 0,
-        "pct_rt":            vs[-1]["pct_rt"]  if vs else 0,
-        "prom_espera":       prom_espera_final,
-        "total_iteraciones": iteracion,
-        "tiempo_simulado":   round(reloj, 2),
-        "total_filas":       len(vs)
-    }
-
-    return jsonify({
-        "filas": vs,   # todas las filas — el frontend filtra por j e i
-        "stats": stats
-    })
-
-
-if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    _seq               = 0
