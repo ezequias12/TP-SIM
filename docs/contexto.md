@@ -1,46 +1,49 @@
 # Contexto completo — TP4 Simulación de Colas (Grupo 22)
 
-> **Documento de traspaso (handoff).** Refleja el estado del proyecto al cierre de la
-> última sesión, con TODOS los cambios aplicados. Pensado para retomar el trabajo en
-> otra sesión sin perder contexto.
+> **Documento de traspaso (handoff).** Refleja el estado real del proyecto. Pensado para
+> retomar el trabajo en otra sesión sin perder contexto.
 
 ## Descripción del trabajo
 
-Simulación de eventos discretos (DES) para el sistema de registro dactilar de la
-Municipalidad de Río Cuarto.
-Dos archivos de código únicamente: `simulacion.py` (backend Flask + lógica DES) e
-`index.html` (frontend React por CDN, sin npm).
+Simulación de eventos discretos (DES) del sistema de registro dactilar de la Municipalidad
+de Río Cuarto. Aplicación **de escritorio** con interfaz gráfica.
+
+- `simulacion.py` — lógica DES pura (sin web, sin dependencias de UI). Cola de eventos con
+  `heapq`.
+- `main.py` — interfaz gráfica **PyQt5** (modelo/vista virtual, encabezado agrupado,
+  panel de columnas congeladas, hilo de simulación, tarjetas de estadísticas).
+- `main.ui` — layout de la ventana (Qt Designer, cargado con `uic.loadUi`).
+
+> No hay servidor Flask, ni React, ni navegador. Toda la app corre en un único proceso
+> de escritorio. (El stack web de versiones anteriores fue reemplazado en el commit
+> `e9fcf34` "Migrar frontend a PyQt5".)
 
 ---
 
-## Cómo correr (estado actual)
+## Cómo correr
 
 ```bash
-pip install flask flask-cors numpy
+pip install PyQt5
 cd TP-SIM
-python3 simulacion.py            # corre en http://localhost:5001
-# abrir index.html en el navegador (file://)
+python main.py
 ```
 
-- **Backend escucha en el puerto `5001`** (`app.run(debug=True, port=5001)` al final de `simulacion.py`).
-- **El frontend hace fetch a `http://localhost:5001/simular`** (función `runSim` en `index.html`).
-- ⚠️ En macOS el puerto 5001 puede estar ocupado por *ControlCenter*. Si pasa, liberar
-  con `kill $(lsof -ti :5001)` o cambiar el puerto **en los dos archivos** (deben coincidir).
+Se abre la ventana "TP4 — Simulación: Sistemas de Colas". No requiere conexión de red ni
+puerto.
 
 ---
 
-## Estado de Git (importante para retomar)
+## Archivos
 
-- Repo de trabajo: **interior** en `TP2/TP-SIM/` → remote `origin = ezequias12/TP-SIM`, rama `main`.
-  (Existe además un repo "exterior" en `TP2/` rama `master` que trata a `TP-SIM` como
-  submódulo/gitlink. **Siempre operar git con `git -C .../TP-SIM ...` o parado dentro de
-  `TP-SIM/`** para no tocar el repo exterior por error.)
-- Último push hecho: merge `65960f9` ya en `origin/main`.
-- En el merge con los cambios de ezequias (que tocó los mismos archivos), se resolvió el
-  conflicto **quedándose con nuestra versión** de `index.html` y `simulacion.py`, y se
-  conservó el `README.md` que él agregó. Hablado con ezequias, OK.
-- ⚠️ **Seguridad pendiente:** la URL del remote tiene un **token `ghp_...` embebido en
-  texto plano**. Conviene revocarlo en GitHub y reconfigurar el remote sin token.
+```
+simulacion.py    — lógica DES (variables aleatorias, eventos, procesadores, loop)
+main.py          — GUI PyQt5 (modelo, vista, header agrupado, worker, stats)
+main.ui          — layout de la ventana (Qt Designer XML)
+README.md        — captura de pantalla
+docs/enunciado.txt      — enunciado del TP
+docs/consideraciones.md — requerimientos de interfaz para TP3+
+docs/contexto.md        — este archivo
+```
 
 ---
 
@@ -48,244 +51,223 @@ python3 simulacion.py            # corre en http://localhost:5001
 
 - **4 terminales** de registro dactilar.
 - **Empleados** llegan con distribución exponencial negativa (media configurable, default 2 min).
-- **Técnico de mantenimiento** llega cada ~60 min (uniforme, rango configurable, default 57–63 min).
 - **Tiempo de atención** de empleado: uniforme entre 5 y 8 min (configurable).
-- **Tiempo de mantenimiento** por terminal: uniforme entre 3 y 10 min (configurable).
-  El técnico genera un **RND nuevo cada vez que empieza a mantener una terminal** (ver más abajo).
-- **Cola máxima**: 5 empleados (configurable). Si un empleado llega con la cola llena → se
-  va sin volver (RT = "rechazado total") y **no ocupa columna** en la tabla.
-- Simulación corre hasta tiempo X O hasta 100.000 filas (lo que ocurra primero).
+- **Técnico de mantenimiento** vuelve cada ~60 min (uniforme, default 57–63 min), medido
+  desde que terminó el mantenimiento de la **última** terminal de la ronda.
+- **Tiempo de mantenimiento** por terminal: uniforme entre 3 y 10 min (configurable). El
+  técnico genera un RND nuevo por cada terminal que mantiene.
+- El técnico tiene **prioridad sobre los empleados** pero **no interrumpe** un registro en
+  curso: si no hay terminal libre pendiente, espera (`Esperando Terminal Libre`) y toma la
+  primera que se libere antes que la cola de empleados.
+- **Cola**: si un empleado llega y la cola ya está llena (≥ `MAX_COLA`, default 5) se va y
+  cuenta como RT (rechazado). **No vuelve** y no ocupa columna en la tabla.
+- La simulación corre hasta `tiempo_max` minutos **o** hasta 100.000 filas, lo que ocurra
+  primero (`MAX_ITER = 99999` + fila de inicialización).
 
 ---
 
-## Parámetros configurables desde el frontend
+## Métricas pedidas por el enunciado
 
-| Parámetro | Variable Python | Default |
-|---|---|---|
-| Media llegada empleado (min) | `MEDIA_LLEGADA_EMP` | 2.0 |
-| Máx. en cola | `MAX_COLA` | 5 |
-| Atención mín (min) | `ATN_MIN` | 5 |
-| Atención máx (min) | `ATN_MAX` | 8 |
-| Mantenimiento mín (min) | `MANT_MIN` | 3 |
-| Mantenimiento máx (min) | `MANT_MAX` | 10 |
-| Técnico entre-llegada mín (min) | `TEC_MIN` | 57 |
-| Técnico entre-llegada máx (min) | `TEC_MAX` | 63 |
-| Tiempo máximo simulación (min) | (parámetro `tiempo_max` en `simular()`) | 480 |
+- **% de empleados que se van para regresar más tarde** → `% que se van = RT / llegaron`.
+- **Tiempo promedio de espera** (todos los empleados del sistema) → `acum_espera / atendidos`
+  (incluye a quienes esperaron 0 por ir directo a una terminal libre).
 
 ---
 
-## Archivos
+## Desviaciones del enunciado (decididas a propósito)
 
-```
-simulacion.py   — Flask backend + toda la lógica DES (corre en :5001)
-index.html      — React 18 CDN (Babel standalone) frontend (fetch a :5001)
-contexto.md     — este archivo
-enunciado.txt   — enunciado del TP
-README.md       — agregado por ezequias (incluye una imagen)
-```
+> Dos puntos del enunciado se resolvieron con una interpretación distinta a la literal. Si
+> la cátedra objeta, cada corrección es de **una línea**.
+
+1. **El rechazado no regresa.** El enunciado dice *"se va y regresa a la media hora"*
+   (+30 min). El código solo incrementa `contador_rt`; no programa una re-llegada. Solo se
+   reporta el porcentaje. Ubicación: `simulacion.py` (rama `else` de `procesar_llegada_emp`).
+2. **Cola máxima = 5 (lectura "5 o más").** El enunciado dice *"más de 5 esperando"*, que
+   literalmente permitiría hasta 6 en cola. El código usa `emp_en_cola() < MAX_COLA` con
+   `MAX_COLA = 5`, es decir rechaza cuando ya hay 5 esperando. Ubicación:
+   `simulacion.py` (condición `elif emp_en_cola() < MAX_COLA`).
 
 ---
 
-## simulacion.py — estructura y lógica (estado ACTUAL)
+## Parámetros configurables (desde la GUI)
+
+| Parámetro | Widget (`main.ui`) | Variable (`simulacion.py`) | Default |
+|---|---|---|---|
+| Media llegada empleado (min) | `txt_media_llegada` | `MEDIA_LLEGADA_EMP` | 2 |
+| Máx. en cola | `txt_max_cola` | `MAX_COLA` | 5 |
+| Atención mín (min) | `txt_atn_min` | `ATN_MIN` | 5 |
+| Atención máx (min) | `txt_atn_max` | `ATN_MAX` | 8 |
+| Mantenimiento mín (min) | `txt_mant_min` | `MANT_MIN` | 3 |
+| Mantenimiento máx (min) | `txt_mant_max` | `MANT_MAX` | 10 |
+| Técnico entre-llegada mín (min) | `txt_tec_min` | `TEC_MIN` | 57 |
+| Técnico entre-llegada máx (min) | `txt_tec_max` | `TEC_MAX` | 63 |
+| Tiempo máximo (X, min) | `txt_tiempo_max` | (arg `tiempo_max` de `simular()`) | 480 |
+| Hora desde (j, min) | `txt_hora_desde` | filtro de visualización | 0 |
+| Cant. filas (i) | `txt_cant_filas` | filtro de visualización | 20 |
+
+`on_simular()` lee los widgets, sobrescribe las globales de `simulacion`, llama
+`resetear_estado()` y corre `simular(tiempo_max)` en un hilo aparte.
+
+---
+
+## simulacion.py — estructura y lógica
 
 ### Constantes y estado global
 
 ```python
-N_TERMINALES      = 4
 MAX_COLA          = 5
-MAX_ITER          = 99999   # init ocupa fila 0, eventos 1..99999 → 100.000 filas total
+MAX_ITER          = 99999   # init = fila 0; eventos 1..99999 → 100.000 filas
 MEDIA_LLEGADA_EMP = 2.0
 ATN_MIN,  ATN_MAX  = 5, 8
 MANT_MIN, MANT_MAX = 3, 10
 TEC_MIN,  TEC_MAX  = 57, 63
 ```
 
-Estado global (reseteable): `terminales`, `tecnico`, `cola`, `empleados`, `eventos`,
-`reloj`, `iteracion`, `id_emp_contador`, `contador_atendidos`, `contador_rt`,
-`contador_llegaron`, `acum_espera`, `vector_estado`, **`ultimo_idx_terminal`** (puntero
-round-robin de terminales).
+Estado global reseteable por `resetear_estado()`: `terminales`, `tecnico`, `cola`,
+`empleados`, `eventos`, `reloj`, `iteracion`, `id_emp_contador`, `contador_atendidos`,
+`contador_rt`, `contador_llegaron`, `acum_espera`, `vector_estado`, `ultimo_idx_terminal`
+(puntero round-robin), `_seq` (desempate del heap).
 
-> NOTA: `col_emp_contador` **ya no existe** (se eliminó — ver cambio #6).
-
-### Distribuciones
+### Variables aleatorias
 
 ```python
-def trunc2(x):
-    return int(x * 100) / 100   # truncar (nunca redondear) a 2 decimales
+def trunc2(x):  return int(x * 100) / 100   # truncar (nunca redondear) a 2 decimales
 
-def gen_llegada_emp():     # exponencial negativa
-    rnd = random.random()
-    return rnd, trunc2(-MEDIA_LLEGADA_EMP * math.log(1 - rnd))
-
-def gen_atencion():        # uniforme [ATN_MIN, ATN_MAX]
-def gen_mantenimiento():   # uniforme [MANT_MIN, MANT_MAX]  ← se llama por CADA terminal mantenida
-def gen_llegada_tec():     # uniforme [TEC_MIN, TEC_MAX]
+def gen_llegada_emp():   # exponencial negativa: -media * ln(1 - rnd)
+def gen_atencion():      # uniforme [ATN_MIN, ATN_MAX]
+def gen_mantenimiento(): # uniforme [MANT_MIN, MANT_MAX]  ← se llama por CADA terminal
+def gen_llegada_tec():   # uniforme [TEC_MIN, TEC_MAX]
 ```
 
-### Asignación de terminales a empleados — ROUND-ROBIN (cambio #5)
+Cada generador devuelve `(rnd, tiempo_truncado)`.
 
-`terminal_libre_para_emp()` ya **no** devuelve siempre la primera libre. Reparte por
-turnos (sin RNG) usando el puntero global `ultimo_idx_terminal`, empezando a buscar desde
-la terminal siguiente a la última asignada, en forma cíclica:
+### Cola de eventos (heap)
 
-```python
-def terminal_libre_para_emp():
-    global ultimo_idx_terminal
-    n = len(terminales)
-    for offset in range(1, n + 1):
-        idx = (ultimo_idx_terminal + offset) % n
-        if terminales[idx]["estado"] == "Libre":
-            ultimo_idx_terminal = idx
-            return terminales[idx]
-    return None
-```
+Evento = `(tiempo, seq, tipo, eid)`. `push_evento` / `siguiente_evento` usan `heapq`
+(O(log n)). `seq` (monótono) desempata por orden de inserción cuando dos eventos comparten
+tiempo. `tiempo_de(tipo)` devuelve el próximo tiempo de un tipo de evento (para columnas
+"Próx. Evento").
 
-- Se resetea a `-1` en `resetear_estado()` (primera asignación arranca por Terminal 1).
-- **Solo aplica a empleados.** El técnico (`terminal_libre_con_pendiente()`) quedó igual:
-  en cada ronda mantiene TODAS las terminales pendientes, así que su orden no genera sobrecarga.
+### Asignación de terminales
 
-### Empleado: columna = id de llegada (cambio #6)
+- `terminal_libre_para_emp()` — **round-robin** con `ultimo_idx_terminal` (sin RNG): reparte
+  empleados entre terminales, empezando desde la siguiente a la última asignada. Solo aplica
+  a empleados.
+- `terminal_libre_con_pendiente()` — primera terminal Libre con `pendiente=True` (para el
+  técnico).
+- `hay_pendiente_ocupada()` — hay alguna terminal Ocupada con mantenimiento pendiente.
 
-Cada empleado entra al dict `empleados` con `"id": emp_id` y `"col": emp_id` (el mismo
-número de llegada). Los **rechazados (RT) nunca entran al dict**, así que no aparecen en
-ningún snapshot ni ocupan columna. Resultado: la columna "Empleado N" se corresponde
-exactamente con la N-ésima llegada; los huecos (ej. falta "Empleado 46") son llegadas rechazadas.
+### Prioridad al liberarse una terminal — `atender_cola_con_terminal(terminal)`
 
-### Snapshot de empleados (cambio #3)
+1. Técnico (si está `Esperando Terminal Libre` y la terminal tiene `pendiente=True`).
+2. Primer empleado de la cola.
+3. Nadie → la terminal queda `Libre`.
 
-```python
-def snapshot_empleados():
-    snaps = []
-    for emp in sorted(empleados.values(), key=lambda e: e["col"]):
-        snaps.append({
-            "col":             emp["col"],
-            "estado":          emp["estado"],
-            "hora_llegada":    round(emp["hora_llegada"], 2),
-            "hora_inicio_esp": round(emp["hora_inicio_esp"], 2) if emp["hora_inicio_esp"] is not None else "-",
-            "terminal_id":     emp["terminal_id"] if emp["terminal_id"] is not None else "-",
-        })
-    return snaps
-```
+Devuelve un dict con los RND generados (`{"manten":…}` / `{"atencion":…}` / `{}`) para que
+la fila correspondiente muestre el RND correcto.
 
-Incluye `terminal_id` = terminal donde es atendido (o `"-"` si está en cola esperando).
+### Procesadores de eventos
 
-### Random de mantenimiento visible al disparar desde Fin Atención (cambio #1)
+- `procesar_llegada_emp()` — asigna terminal libre (round-robin) o encola si hay lugar; si
+  no, RT. Programa la próxima llegada de empleado.
+- `procesar_fin_atencion(term_id)` — acumula la espera del empleado atendido
+  (`hora_asignacion - hora_inicio_esp`), marca `AT`, libera la terminal y la reasigna por
+  prioridad. El empleado se borra del dict después de guardar la fila.
+- `procesar_llegada_tec()` — manda al técnico a una terminal libre pendiente; si no hay pero
+  hay ocupada pendiente, queda `Esperando Terminal Libre`; si no hay ninguna pendiente,
+  reprograma su próxima llegada.
+- `procesar_fin_manten(term_id)` — busca la siguiente terminal pendiente (libre u ocupada).
+  Si no queda ninguna → **ronda completa**: resetea `pendiente=True` en todas, el técnico
+  descansa y se programa su próxima llegada (60±3 desde el fin de la última terminal).
 
-`atender_cola_con_terminal(terminal)` ahora **retorna un dict** con las claves de los RND
-generados (`{"manten":…, "t_manten":…}` o `{"atencion":…, "t_atencion":…}` o `{}`), en vez
-de una tupla descartada. Así, cuando un **Fin Atención** libera una terminal y el técnico
-(en ETL al frente de la cola) empieza a mantenerla, el `rnd_manten`/`t_manten` queda
-guardado en esa fila:
+### Loop principal — `simular(tiempo_max)`
 
-```python
-# en procesar_fin_atencion:
-rnds = atender_cola_con_terminal(term)
-guardar_fila(f"Fin Atencion T{terminal_id}", rnds)
-```
+Programa primera llegada de empleado y de técnico, guarda fila "Inicialización" y corre
+hasta `MAX_ITER` o `reloj >= tiempo_max` (o cola de eventos vacía). Devuelve `vector_estado`.
 
 ### Estados
 
-- **Terminal**: `"Libre"`, `"Ocupada"`, `"Siendo mantenida"`.
-- **Técnico**: `"Descansando"` (D), `"ETL"` (esperando terminal libre), `"RM"` (realizando mantenimiento).
-- **Empleado**: `"EA"` (esperando atención), `"SA"` (siendo atendido), `"AT"` (acaba de
-  terminar / se va — visible solo en la fila de su Fin Atención, luego se borra del dict).
+- **Terminal**: `Libre`, `Ocupada`, `Siendo mantenida` (+ flag `pendiente`).
+- **Técnico**: `Descansando`, `Esperando Terminal Libre`, `Realizando Mantenimiento`.
+- **Empleado**: `EA` (esperando atención), `SA` (siendo atendido), `AT` (acaba de terminar /
+  se va — visible solo en la fila de su Fin Atención; se muestra como `"x"`).
 
-### `atender_cola_con_terminal` — prioridad
+### Empleado: columna = id de llegada
 
-Técnico (solo si `terminal["pendiente"]==True`) > empleado > libre. Si el técnico está al
-frente pero la terminal ya fue mantenida (`pendiente=False`), se omite al técnico y se
-atiende al primer empleado de la cola.
+Cada empleado entra al dict `empleados` con `"col": emp_id` (su número de llegada). Los
+rechazados (RT) nunca entran al dict → no aparecen en ningún snapshot ni ocupan columna. Los
+huecos en la numeración de columnas corresponden a llegadas rechazadas.
 
-### `procesar_fin_manten` — lógica de ronda
+### Fila del vector de estado — `guardar_fila`
 
-1. Hay terminal libre con `pendiente=True` → el técnico va directo.
-2. No hay libre pero sí ocupada con pendiente → `ETL`, entra a cola en posición 0.
-3. Ninguna pendiente → **ronda completa**: resetea todas a `pendiente=True`, descansa,
-   programa próxima llegada del técnico.
-
-### Endpoint Flask
-
-`POST /simular`: sobreescribe las globales con los parámetros del body, llama
-`resetear_estado()`, corre `simular(tiempo_max)` y devuelve `{ "filas": [...], "stats": {...} }`.
-**Retorna TODAS las filas**; el filtrado por `j` (hora desde) e `i` (cantidad) lo hace el frontend.
+Guarda **valores crudos** (sin formatear). El truncado a 2 decimales, los `"SI"/"NO"`, los
+`"-"`, el `%RT` y el promedio de espera se calculan en el modelo de la GUI, solo para las
+celdas visibles (para no construir strings en el loop de simulación).
 
 ---
 
-## index.html — estructura (estado ACTUAL)
+## main.py — estructura (PyQt5)
 
-### Stack
-React 18 UMD + Babel Standalone (CDN), sin npm/build. Dark theme (Catppuccin Mocha).
+### `SimModel(QAbstractTableModel)` — modelo virtual
 
-### Decoupling simulación / visualización
-- `runSim()` hace fetch a `:5001/simular` y guarda todo en `todasFilas`.
-- `j` (hora desde) e `i` (cantidad de filas) son filtros locales (`useMemo`) — **no re-simulan**.
-- Inputs numéricos guardados como **strings** (evita `Number("")=0`); se parsean con `pf()`/`pi()`.
+Renderizado virtual: solo se piden las celdas visibles, sin parpadeo aunque haya miles de
+filas. `set_content(rows, cols)` fija filas y columnas. `_spec(key)` decide cómo leer cada
+columna (escalar, lista de terminales, %RT, promedio, empleado dinámico) y qué mapa de
+colores aplicar. `_fmt` trunca floats (`trunc2_str`), mapea bools a `SI`/`NO` y `None` a `-`.
 
-### Columnas de empleado (DINÁMICAS, cambios #3, #4, #6)
-- `activeEmpCols` recolecta los `col` (= id de llegada) que aparecen en las filas visibles
-  con estado `EA`, `SA` o `AT`. Los rechazados nunca aparecen → no generan columna.
-- `empGRP` arma un grupo por cada empleado activo con **3 sub-columnas**:
-  `Estado`, `Hora`, **`Term.`** (terminal donde es atendido).
-- `transformar(f)` mapea el snapshot a las claves de fila. Cuando el empleado **se va**
-  (estado `"AT"`), blanquea hora y terminal:
+### `GroupedHeader(QHeaderView)` — encabezado de dos niveles
 
-```javascript
-(f.empleados_snap || []).forEach(e => {
-  const seFue = e.estado === "AT";               // fin de atención → ya se fue
-  row[`emp${e.col}_estado`] = e.estado;
-  row[`emp${e.col}_hora`]   = seFue ? "-" : (e.hora_inicio_esp !== "-" ? e.hora_inicio_esp : e.hora_llegada);
-  row[`emp${e.col}_term`]   = seFue ? "-" : e.terminal_id;
-});
-```
+Dibuja a mano (`paintEvent`) dos filas de encabezado: fila superior con el nombre del grupo
+coloreado (Llegada Empleado, Fin Atención, Terminal 1..4, Estadísticas, Empleado N…) y fila
+inferior con el título de cada columna. `set_groups(groups)` define los tramos.
 
-### Render: la "x" roja al irse (cambio #4)
-En la celda, el estado `"AT"` se muestra como **`"x"`** (en rojo vía `cfEmp` → clase `.fin`),
-mientras que hora y `Term.` muestran `"-"`:
+### Panel de columnas congeladas (frozen)
 
-```javascript
-const display = raw === "AT" ? "x" : (typeof raw === "number" ? Math.trunc(raw * 100) / 100 : raw);
-```
+Un segundo `QTableView` (`self._frozen`) muestra solo las **3 primeras columnas** (#, Reloj,
+Evento) y comparte modelo y selección con la tabla principal. La tabla principal oculta esas
+3 columnas. Los scrolls verticales se sincronizan en ambos sentidos → las 3 columnas quedan
+siempre visibles al hacer scroll horizontal, y la selección de fila se mantiene.
 
-Todos los números se **truncan** (no redondean) a 2 decimales en display.
+### `SimWorker(QObject)` + `QThread`
 
-### Encabezados agrupados de 2 niveles
-`GRP_STATIC` (columnas fijas) + `empGRP` (empleados dinámicos). `single:true` → `rowSpan=2`.
-`buildThead()` arma el `<thead>` con sticky positioning (fila 1 `top:0`, fila 2 `top:ROW1_H`,
-primera columna `#` sticky a la izquierda). `COLUMNAS` = lista plana derivada para las celdas.
+La simulación corre en un hilo aparte para no congelar la UI. Al iniciar muestra
+`prg_sim` (barra indeterminada) y "⏳ Simulando…"; al terminar (`finished`) vuelca
+`sim.vector_estado`, calcula estadísticas y refresca tablas.
 
----
+### Tabla de "última fila" + tarjetas de estadísticas
 
-## Resumen de TODOS los cambios de esta sesión
+- `tbl_ultima` — altura fija, muestra solo la última fila del vector (estado final).
+- `pnl_stats` — tarjetas: Total llegaron, Atendidos, Se fueron (RT), % que se van,
+  Prom. espera, Iteraciones, Tiempo simulado.
 
-1. **Random de mantenimiento visible desde Fin Atención** — `atender_cola_con_terminal`
-   ahora retorna un dict de RNDs y `procesar_fin_atencion` lo pasa a `guardar_fila`
-   (antes se pasaba `{}` y se perdía el `rnd_manten`/`t_manten`).
-2. *(refactor del punto 1: el retorno tupla `(None,None)` pasó a ser dict `{}`).*
-3. **Atributo `terminal_id` del empleado** — agregado al snapshot del backend y nueva
-   sub-columna **"Term."** por empleado en el frontend (muestra la terminal de atención,
-   o `-` si está en cola).
-4. **"x" roja al irse el empleado** — en la fila de su Fin Atención, estado = `"x"` (rojo),
-   y hora + terminal = `"-"` (ya se fue).
-5. **Asignación round-robin de terminales a empleados** — `terminal_libre_para_emp()` rota
-   por turnos con `ultimo_idx_terminal` (sin RNG); reparte la carga, no satura la Terminal 1.
-   No aplica al técnico.
-6. **Columna = id de llegada del empleado** — se eliminó `col_emp_contador`; `col = emp_id`.
-   Los rechazados (RT) no ocupan columna y cada llegada se corresponde con su propia columna
-   (con huecos en los rechazados).
-7. **Infra/Git** — puerto unificado en 5001 (backend + fetch del frontend); commit y push a
-   `origin/main`; merge con los cambios de ezequias resuelto a favor de nuestra versión.
+### Filtro de visualización (no re-simula)
+
+`update_table()` filtra `todas_filas` por **j** (hora desde, con `bisect` sobre la lista de
+relojes) e **i** (cantidad de filas). Recalcula las columnas dinámicas de empleados a partir
+de las filas visibles. Cambiar j/i NO vuelve a correr la simulación.
+
+### Copiar a Excel — `on_copiar`
+
+Vuelca encabezados + todas las filas visibles como TSV al portapapeles → se pega directo en
+Excel/planillas.
 
 ---
 
-## Bugs corregidos en sesiones anteriores (historial)
+## main.ui — estructura del layout
 
-1. **Doble fila con num=0** → `"num": len(vector_estado)` (índice secuencial pre-append).
-2. **MAX_ITER off-by-one** → `MAX_ITER = 99999` (init + 99.999 eventos = 100.000 filas).
-3. **Borrado en inputs numéricos** → estados como strings, parseo con `pf()`/`pi()`.
-4. **Re-mantenimiento incorrecto** → `atender_cola_con_terminal` chequea `terminal["pendiente"]`
-   antes de asignar el técnico; si `False`, salta al técnico y atiende empleados.
-5. **Columnas `t_*` faltantes** → `guardar_fila` lee `t_llegada_emp`, `t_atencion`, etc.
-6. **Sticky headers (CSS vs inline)** → todo el sticky se maneja por inline style en `buildThead()`.
+`QMainWindow` → `QVBoxLayout`:
+
+1. `lbl_titulo` + `lbl_subtitulo` + separador.
+2. `grp_params` (QGroupBox, grilla): los 8 parámetros del sistema.
+3. `grp_sim` (QGroupBox): `txt_tiempo_max`, `btn_simular`, `prg_sim`, `lbl_info`.
+4. Separador.
+5. `grp_vis` (QGroupBox): `txt_hora_desde` (j), `txt_cant_filas` (i), `btn_copiar`,
+   `lbl_filtro`.
+6. `tbl_vector` (QTableView principal, se expande).
+7. `lbl_ultima` + `tbl_ultima` (última fila, altura fija).
+8. `pnl_stats` (QFrame, tarjetas creadas en Python).
+
+El tema oscuro (Catppuccin Mocha) se aplica por stylesheet (`DARK`) en `main.py`.
 
 ---
 
@@ -293,31 +275,44 @@ primera columna `#` sticky a la izquierda). `COLUMNAS` = lista plana derivada pa
 
 | Grupo | Columnas |
 |---|---|
-| (single) | #, Reloj, Evento |
-| Llegada Empleado | RND, T.entr, Próx. |
-| Llegada Técnico | RND, T.entr, Próx. |
-| Fin Atención | RND, T.at, At 1, At 2, At 3, At 4 |
-| Fin Mantenimiento | RND, T.mant, Fin |
-| Terminal 1..4 | Estado, Pend. |
-| (single) | Cola |
-| Técnico | Estado, Term. |
-| Estadísticas | Aten., RT, % RT, AcumEsp, PromEsp |
-| Empleado N (dinámico, N = id de llegada) | **Estado, Hora, Term.** |
+| (fijas) | #, Reloj, Evento |
+| Llegada Empleado | RND, T. Entrada, Próx. Evento |
+| Llegada Técnico | RND, T. Entrada, Próx. Evento |
+| Fin Atención | RND, T. Atención, Fin At. 1..4 |
+| Fin Mantenimiento | RND, T. Mantenim., Fin Mantenim. |
+| Terminal 1..4 | Estado, Pendiente |
+| Cola | Cola |
+| Técnico | Estado, Terminal |
+| Estadísticas | Atendidos, Se fueron (RT), % RT, Acum. Espera, Prom. Espera |
+| Empleado N (dinámico, N = id de llegada) | Estado, Hora inicio, Terminal |
 
 ---
 
-## Colores del frontend
+## Colores de la GUI
 
 - Terminal: Libre → cyan (`#89dceb`), Ocupada → naranja (`#fab387`), Siendo mantenida → rojo (`#f38ba8`).
-- Técnico: D → gris, ETL → amarillo, RM → rojo.
-- Empleado: SA → verde, EA → amarillo, **AT → rojo (la "x")**.
+- Técnico: Descansando → gris (`#9399b2`), Esperando Terminal Libre → amarillo (`#f9e2af`), Realizando Mantenimiento → rojo (`#f38ba8`).
+- Empleado: SA → verde (`#a6e3a1`), EA → amarillo (`#f9e2af`), "x" (AT) → rojo (`#f38ba8`).
 
 ---
 
 ## Decisiones de diseño
 
-- **Sin npm/bundler**: React y Babel por CDN; abre como `file://`.
-- **Backend retorna todo**: `j` e `i` son filtros de visualización (no re-simulan).
+- **App de escritorio PyQt5**: sin web, sin servidor, sin build. Un solo proceso.
+- **Modelo virtual** (`QAbstractTableModel`): solo renderiza celdas visibles → sin parpadeo
+  con miles de filas (requerimiento de `consideraciones.md`).
+- **Filtros j/i locales**: cambiar la vista no re-simula.
 - **`trunc2` = truncar, nunca redondear**: requerimiento del enunciado.
-- **Round-robin sin RNG**: reparto determinista y reproducible de terminales a empleados.
+- **Round-robin sin RNG** para asignar terminales a empleados: reparto determinista y
+  reproducible.
 - **`col = emp_id`**: una columna por empleado que efectivamente entró al sistema.
+- **Simulación en hilo aparte**: la UI no se congela durante corridas largas.
+
+---
+
+## Estado de Git
+
+- Remote: `origin = https://github.com/ezequias12/TP-SIM.git`, rama `main` (sin token
+  embebido — el problema de seguridad de versiones anteriores quedó resuelto).
+- La migración a PyQt5 está en el commit `e9fcf34`; el técnico que nunca entra a la cola de
+  empleados, en `c36ea68`.
