@@ -197,7 +197,7 @@ class SimModel(QAbstractTableModel):
     @staticmethod
     def _fmt(v):
         if v is None:   return "-"
-        if v is True:   return "SI"
+        if v is True:   return "SÍ"
         if v is False:  return "NO"
         if isinstance(v, float): return trunc2_str(v)
         return str(v)
@@ -317,6 +317,7 @@ class MainWindow(QMainWindow):
         self._cfg_tbl(self.tbl_vector, alt=True)
         self.tbl_vector.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self.tbl_vector.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.tbl_vector.setFrameShape(QFrame.NoFrame)  # mismo frame que el panel frozen
 
         # ── Panel frozen: #, Reloj, Evento (siempre visibles a la izquierda) ──
         self._frozen     = QTableView()
@@ -325,7 +326,11 @@ class MainWindow(QMainWindow):
         self._frozen.setModel(self.model_vector)
         self._frozen.setSelectionModel(self.tbl_vector.selectionModel())  # selección compartida
         self._cfg_tbl(self._frozen, alt=True)
-        self._frozen.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # Scroll horizontal SIEMPRE visible (igual que la tabla principal): reserva
+        # de forma nativa el mismo alto abajo. Así ambos viewports miden exactamente
+        # igual y el rango de scroll vertical coincide → sin desfase al llegar al
+        # final. (La barra del frozen queda inerte: sus 3 columnas entran justo.)
+        self._frozen.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self._frozen.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._frozen.setFrameShape(QFrame.NoFrame)
         self._frozen.setFocusPolicy(Qt.NoFocus)
@@ -426,6 +431,10 @@ class MainWindow(QMainWindow):
         - Panel frozen: muestra solo las N_FROZEN primeras columnas.
         - Tabla principal: oculta esas N_FROZEN primeras para evitar duplicación.
         - Ajusta el ancho fijo del panel según las columnas visibles.
+
+        La igualación de alto (para que el scroll vertical no se desfase al final)
+        la da la reserva nativa del scroll horizontal en ambas tablas (ver __init__),
+        no un margen calculado.
         """
         ncols = self.model_vector.columnCount()
         for c in range(ncols):

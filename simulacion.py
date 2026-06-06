@@ -253,7 +253,7 @@ def procesar_fin_atencion(terminal_id):
     term["fin_aten"] = None
 
     rnds = atender_cola_con_terminal(term)
-    guardar_fila(f"Fin Atencion T{terminal_id}", rnds)
+    guardar_fila(f"Fin Atención T{terminal_id}", rnds)
 
     if emp_id and emp_id in empleados:
         del empleados[emp_id]
@@ -276,7 +276,7 @@ def procesar_llegada_tec():
         rnds["t_llegada_tec"] = t_t
         push_evento(round(reloj + t_t, 2), "llegada_tec")
 
-    guardar_fila("Llegada Tecnico", rnds)
+    guardar_fila("Llegada Técnico", rnds)
 
 
 def procesar_fin_manten(terminal_id):
@@ -329,7 +329,7 @@ def simular(tiempo_max):
     rnd_t, t_t = gen_llegada_tec()
     push_evento(t_t, "llegada_tec")
 
-    guardar_fila("Inicializacion", {
+    guardar_fila("Inicialización", {
         "llegada_emp": rnd_e, "t_llegada_emp": t_e,
         "llegada_tec": rnd_t, "t_llegada_tec": t_t
     })
