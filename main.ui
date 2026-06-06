@@ -38,59 +38,129 @@
     <item>
      <widget class="QGroupBox" name="grp_params">
       <property name="title"><string>PARÁMETROS DEL SISTEMA</string></property>
-      <layout class="QGridLayout" name="layout_params">
+      <layout class="QVBoxLayout" name="layout_params">
        <property name="spacing"><number>6</number></property>
        <property name="leftMargin"><number>8</number></property>
        <property name="topMargin"><number>8</number></property>
        <property name="rightMargin"><number>8</number></property>
        <property name="bottomMargin"><number>8</number></property>
-       <item row="0" column="0">
-        <widget class="QLabel" name="lbl_ml"><property name="text"><string>Media ll. emp (min)</string></property></widget>
+       <item>
+        <layout class="QHBoxLayout" name="layout_params_row0">
+         <property name="spacing"><number>6</number></property>
+         <item>
+          <widget class="QLabel" name="lbl_ml"><property name="text"><string>Media ll. emp (min)</string></property></widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="txt_media_llegada">
+           <property name="text"><string>2</string></property>
+           <property name="maximumWidth"><number>100</number></property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="spacer_p0">
+           <property name="orientation"><enum>Qt::Horizontal</enum></property>
+           <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QLabel" name="lbl_mc"><property name="text"><string>Máx. en cola</string></property></widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="txt_max_cola">
+           <property name="text"><string>5</string></property>
+           <property name="maximumWidth"><number>100</number></property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="spacer_p1">
+           <property name="orientation"><enum>Qt::Horizontal</enum></property>
+           <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QLabel" name="lbl_amin"><property name="text"><string>Atención min (min)</string></property></widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="txt_atn_min">
+           <property name="text"><string>5</string></property>
+           <property name="maximumWidth"><number>100</number></property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="spacer_p2">
+           <property name="orientation"><enum>Qt::Horizontal</enum></property>
+           <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QLabel" name="lbl_amax"><property name="text"><string>Atención máx (min)</string></property></widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="txt_atn_max">
+           <property name="text"><string>8</string></property>
+           <property name="maximumWidth"><number>100</number></property>
+          </widget>
+         </item>
+        </layout>
        </item>
-       <item row="0" column="1">
-        <widget class="QLineEdit" name="txt_media_llegada"><property name="text"><string>2</string></property></widget>
-       </item>
-       <item row="0" column="2">
-        <widget class="QLabel" name="lbl_mc"><property name="text"><string>Máx. en cola</string></property></widget>
-       </item>
-       <item row="0" column="3">
-        <widget class="QLineEdit" name="txt_max_cola"><property name="text"><string>5</string></property></widget>
-       </item>
-       <item row="0" column="4">
-        <widget class="QLabel" name="lbl_amin"><property name="text"><string>Atención min (min)</string></property></widget>
-       </item>
-       <item row="0" column="5">
-        <widget class="QLineEdit" name="txt_atn_min"><property name="text"><string>5</string></property></widget>
-       </item>
-       <item row="0" column="6">
-        <widget class="QLabel" name="lbl_amax"><property name="text"><string>Atención máx (min)</string></property></widget>
-       </item>
-       <item row="0" column="7">
-        <widget class="QLineEdit" name="txt_atn_max"><property name="text"><string>8</string></property></widget>
-       </item>
-       <item row="1" column="0">
-        <widget class="QLabel" name="lbl_mmin"><property name="text"><string>Mantenim. min (min)</string></property></widget>
-       </item>
-       <item row="1" column="1">
-        <widget class="QLineEdit" name="txt_mant_min"><property name="text"><string>3</string></property></widget>
-       </item>
-       <item row="1" column="2">
-        <widget class="QLabel" name="lbl_mmax"><property name="text"><string>Mantenim. máx (min)</string></property></widget>
-       </item>
-       <item row="1" column="3">
-        <widget class="QLineEdit" name="txt_mant_max"><property name="text"><string>10</string></property></widget>
-       </item>
-       <item row="1" column="4">
-        <widget class="QLabel" name="lbl_tmin"><property name="text"><string>Técnico entre min (min)</string></property></widget>
-       </item>
-       <item row="1" column="5">
-        <widget class="QLineEdit" name="txt_tec_min"><property name="text"><string>57</string></property></widget>
-       </item>
-       <item row="1" column="6">
-        <widget class="QLabel" name="lbl_tmax"><property name="text"><string>Técnico entre máx (min)</string></property></widget>
-       </item>
-       <item row="1" column="7">
-        <widget class="QLineEdit" name="txt_tec_max"><property name="text"><string>63</string></property></widget>
+       <item>
+        <layout class="QHBoxLayout" name="layout_params_row1">
+         <property name="spacing"><number>6</number></property>
+         <item>
+          <widget class="QLabel" name="lbl_mmin"><property name="text"><string>Mantenim. min (min)</string></property></widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="txt_mant_min">
+           <property name="text"><string>3</string></property>
+           <property name="maximumWidth"><number>100</number></property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="spacer_p3">
+           <property name="orientation"><enum>Qt::Horizontal</enum></property>
+           <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QLabel" name="lbl_mmax"><property name="text"><string>Mantenim. máx (min)</string></property></widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="txt_mant_max">
+           <property name="text"><string>10</string></property>
+           <property name="maximumWidth"><number>100</number></property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="spacer_p4">
+           <property name="orientation"><enum>Qt::Horizontal</enum></property>
+           <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QLabel" name="lbl_tmin"><property name="text"><string>Técnico entre min (min)</string></property></widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="txt_tec_min">
+           <property name="text"><string>57</string></property>
+           <property name="maximumWidth"><number>100</number></property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="spacer_p5">
+           <property name="orientation"><enum>Qt::Horizontal</enum></property>
+           <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QLabel" name="lbl_tmax"><property name="text"><string>Técnico entre máx (min)</string></property></widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="txt_tec_max">
+           <property name="text"><string>63</string></property>
+           <property name="maximumWidth"><number>100</number></property>
+          </widget>
+         </item>
+        </layout>
        </item>
       </layout>
      </widget>
