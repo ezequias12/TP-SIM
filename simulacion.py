@@ -99,7 +99,7 @@ def hay_pendiente_ocupada():
 
 
 def emp_en_cola():
-    return sum(1 for e in cola if e["tipo"] == "empleado")
+    return len(cola)   # la cola solo contiene empleados; el técnico nunca entra
 
 
 def snapshot_empleados():
@@ -174,35 +174,26 @@ def asignar_tecnico_a_terminal(terminal):
 
 def atender_cola_con_terminal(terminal):
     """
-    Prioridad: técnico (solo si terminal tiene pendiente=True) > empleado > libre.
-    Si el técnico está al frente pero la terminal ya fue mantenida,
-    se omite al técnico y se sirve al primer empleado en espera.
-    Retorna dict con las claves de random generadas (puede estar vacío).
+    Al liberarse una terminal, la asigna en este orden de prioridad:
+      1. Técnico en ETL si la terminal aún tiene mantenimiento pendiente.
+      2. Primer empleado en cola.
+      3. Nadie → terminal queda Libre.
+    La cola contiene SOLO empleados; el técnico nunca entra ni la modifica.
     """
-    if not cola:
-        terminal["estado"] = "Libre"
-        return {}
+    # Prioridad 1: técnico esperando y terminal pendiente de mantenimiento
+    if tecnico["estado"] == "Esperando Terminal Libre" and terminal["pendiente"]:
+        rnd_m, t_m = asignar_tecnico_a_terminal(terminal)
+        return {"manten": rnd_m, "t_manten": t_m}
 
-    siguiente = cola[0]
-
-    if siguiente["tipo"] == "tecnico":
-        if terminal["pendiente"]:
-            cola.pop(0)
-            rnd_m, t_m = asignar_tecnico_a_terminal(terminal)
-            return {"manten": rnd_m, "t_manten": t_m}
-        else:
-            # Terminal no necesita mantenimiento — saltar al técnico, atender empleados
-            for i, item in enumerate(cola):
-                if item["tipo"] == "empleado":
-                    cola.pop(i)
-                    rnd_a, t_a = asignar_empleado_a_terminal(item["id"], terminal)
-                    return {"atencion": rnd_a, "t_atencion": t_a}
-            terminal["estado"] = "Libre"
-            return {}
-    else:
-        cola.pop(0)
-        rnd_a, t_a = asignar_empleado_a_terminal(siguiente["id"], terminal)
+    # Prioridad 2: primer empleado en cola
+    if cola:
+        emp = cola.pop(0)
+        rnd_a, t_a = asignar_empleado_a_terminal(emp["id"], terminal)
         return {"atencion": rnd_a, "t_atencion": t_a}
+
+    # Nadie espera
+    terminal["estado"] = "Libre"
+    return {}
 
 
 # ── Procesadores de eventos ───────────────────────────────────────────────────
@@ -277,8 +268,8 @@ def procesar_llegada_tec():
         rnds["manten"]   = rnd_m
         rnds["t_manten"] = t_m
     elif hay_pendiente_ocupada():
+        # Espera al costado en su propio estado; nunca entra en la cola de empleados
         tecnico["estado"] = "Esperando Terminal Libre"
-        cola.insert(0, {"tipo": "tecnico"})
     else:
         rnd_t, t_t = gen_llegada_tec()
         rnds["llegada_tec"]   = rnd_t
@@ -308,9 +299,8 @@ def procesar_fin_manten(terminal_id):
         rnds["t_manten"] = t_m
 
     elif sig_ocupada:
-        # Esperar al frente de la cola
+        # Espera al costado en su propio estado; nunca entra en la cola de empleados
         tecnico["estado"] = "Esperando Terminal Libre"
-        cola.insert(0, {"tipo": "tecnico"})
         term_actual["estado"] = "Libre"
         atender_cola_con_terminal(term_actual)
 
