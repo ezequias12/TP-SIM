@@ -353,10 +353,14 @@ def simular(tiempo_max):
             break
 
         tiempo, _, tipo, eid = siguiente_evento()
-        reloj = tiempo
 
-        if reloj > tiempo_max:
+        # Si el próximo evento cae fuera del horizonte, cortamos SIN pisar `reloj`,
+        # de modo que `reloj` conserve el tiempo del último evento efectivamente
+        # procesado (ese es el tiempo_simulado real).
+        if tiempo > tiempo_max:
             break
+
+        reloj = tiempo
 
         if tipo == "llegada_emp":
             procesar_llegada_emp()

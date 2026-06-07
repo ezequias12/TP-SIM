@@ -467,8 +467,29 @@ class MainWindow(QMainWindow):
             "tec_max":    self._valf(self.txt_tec_max,        63.0),
             "tiempo_max": self._valf(self.txt_tiempo_max,     480.0),
         }
+
+        # ── Validación de parámetros ──────────────────────────────────────
+        errores = []
+        if params["media"] <= 0:
+            errores.append("La media de llegadas debe ser mayor a 0")
+        if params["tiempo_max"] <= 0:
+            errores.append("El tiempo máximo debe ser mayor a 0")
+        if params["max_cola"] < 0:
+            errores.append("El máximo en cola no puede ser negativo")
+        if params["atn_max"] <= params["atn_min"]:
+            errores.append("Atención: el máx debe ser mayor al mín")
+        if params["mant_max"] <= params["mant_min"]:
+            errores.append("Mantenimiento: el máx debe ser mayor al mín")
+        if params["tec_max"] <= params["tec_min"]:
+            errores.append("Técnico: el máx debe ser mayor al mín")
+        if errores:
+            self.lbl_info.setStyleSheet("color:#f38ba8;")   # rojo
+            self.lbl_info.setText("⚠  " + "   ·   ".join(errores))
+            return
+
         self.btn_simular.setEnabled(False)
         self.prg_sim.setVisible(True)
+        self.lbl_info.setStyleSheet("color:#a6e3a1;")       # verde (restaura si venía de error)
         self.lbl_info.setText("⏳ Simulando…")
 
         self._thread = QThread()
