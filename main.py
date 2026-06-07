@@ -31,8 +31,8 @@ COLS = [
     ("t4_est",   "Estado"),     ("t4_pend", "Pendiente"),
     ("cola",     "Cola"),
     ("tec_est",  "Estado"),     ("tec_term", "Terminal"),
-    ("n_at",     "Atendidos"),  ("n_rt",   "Se fueron (RT)"),
-    ("pct_rt",   "% RT"),       ("acum_esp", "Acum. Espera"), ("prom_esp", "Prom. Espera"),
+    ("n_lleg",     "Llegadas"),    ("n_rt",  "Se van"),         ("pct_se_van", "% se van"),
+    ("acum_esp",   "Acum. espera"), ("n_esp", "Cnt. espera"),   ("prom_esp",   "Prom. espera"),
 ]
 
 BASE_GROUPS = [
@@ -47,7 +47,7 @@ BASE_GROUPS = [
     ("Terminal 4",        "#89dceb", "#1e1e2e", 2),
     ("Cola",              "#b4befe", "#1e1e2e", 1),
     ("Técnico",           "#cba6f7", "#1e1e2e", 2),
-    ("Estadísticas",      "#89b4fa", "#1e1e2e", 5),
+    ("Estadísticas",      "#89b4fa", "#1e1e2e", 6),
 ]
 
 STAT_DEFS = [
@@ -165,7 +165,7 @@ class SimModel(QAbstractTableModel):
             return ("termlist", "term_fin",  int(key[-1]) - 1, None)
         if key == "tec_est":
             return ("scalar",   "tec_est",   None, TEC_COLOR)
-        if key == "pct_rt":
+        if key == "pct_se_van":
             return ("pct",      None,        None, None)
         if key == "prom_esp":
             return ("prom",     None,        None, None)
@@ -182,15 +182,15 @@ class SimModel(QAbstractTableModel):
             nl = f["n_lleg"]
             return self._fmt(f["n_rt"] / nl * 100 if nl else 0)
         if kind == "prom":
-            na = f["n_at"]
-            return self._fmt(f["acum_esp"] / na if na else 0)
+            ne = f["n_esp"]
+            return self._fmt(f["acum_esp"] / ne if ne else 0)
         if kind == "emp":
             tup = f["emp"].get(a)
             if tup is None: return ""
-            estado, hie, hll, tid = tup
+            estado, hll, tid = tup
             fue = estado == "AT"
             if b == "estado": return "x" if fue else estado
-            if b == "hora":   return "-" if fue else self._fmt(hie if hie is not None else hll)
+            if b == "hora":   return "-" if fue else self._fmt(hll)
             return "-" if fue else self._fmt(tid)
         return ""
 
@@ -492,13 +492,13 @@ class MainWindow(QMainWindow):
             f"{n} filas  ·  t={trunc2_str(sim.reloj)} min  ·  {sim.iteracion} iter"
         )
         last = self.todas_filas[-1] if self.todas_filas else {}
-        na, nrt, nl, acum = (last.get(k, 0) for k in ("n_at", "n_rt", "n_lleg", "acum_esp"))
+        na, nrt, nl, ne, acum = (last.get(k, 0) for k in ("n_at", "n_rt", "n_lleg", "n_esp", "acum_esp"))
         stats = {
             "total_llegaron":    nl,          # contador_llegaron: exacto por definición
             "total_atendidos":   na,
             "total_rt":          nrt,
             "pct_rt":            round(nrt / nl * 100, 2) if nl else 0,
-            "prom_espera":       round(acum / na, 3)     if na else 0,
+            "prom_espera":       round(acum / ne, 3)     if ne else 0,
             "total_iteraciones": sim.iteracion,
             "tiempo_simulado":   round(sim.reloj, 2),
         }
@@ -543,7 +543,7 @@ class MainWindow(QMainWindow):
         emp_cols   = [(f"emp{c}_{fld}", h)
                       for c in emp_ids
                       for fld, h in (("estado", "Estado"),
-                                     ("hora",   "Hora inicio"),
+                                     ("hora",   "Hora inicio espera"),
                                      ("term",   "Terminal"))]
         emp_groups = [(f"Empleado {c}", "#cba6f7", "#1e1e2e", 3) for c in emp_ids]
 

@@ -21,7 +21,8 @@ iteracion         = 0
 id_emp_contador   = 0
 contador_atendidos = 0
 contador_rt       = 0
-contador_llegaron = 0
+contador_llegaron = 0   # cnt_llegadas: llegadas totales de empleados
+contador_espera   = 0   # cnt_espera:   empleados incluidos en el promedio de espera
 acum_espera       = 0.0
 vector_estado     = []
 ultimo_idx_terminal = -1  # round-robin: índice de la última terminal asignada a un empleado
@@ -33,26 +34,29 @@ def trunc2(x):
     return int(x * 100) / 100
 
 
+# El RND se trunca a 2 decimales ANTES de la fórmula: así el RND que se muestra en la
+# tabla es exactamente el que se usó en el cálculo (tabla auditable / reproducible en
+# Excel). Sin esto, el display mostraría 0.26 mientras la fórmula corre con 0.2634…
 def gen_llegada_emp():
-    rnd = random.random()
+    rnd = trunc2(random.random())
     t = trunc2(-MEDIA_LLEGADA_EMP * math.log(1 - rnd))
     return rnd, t
 
 
 def gen_atencion():
-    rnd = random.random()
+    rnd = trunc2(random.random())
     t = trunc2(ATN_MIN + rnd * (ATN_MAX - ATN_MIN))
     return rnd, t
 
 
 def gen_mantenimiento():
-    rnd = random.random()
+    rnd = trunc2(random.random())
     t = trunc2(MANT_MIN + rnd * (MANT_MAX - MANT_MIN))
     return rnd, t
 
 
 def gen_llegada_tec():
-    rnd = random.random()
+    rnd = trunc2(random.random())
     t = trunc2(TEC_MIN + rnd * (TEC_MAX - TEC_MIN))
     return rnd, t
 
@@ -103,11 +107,12 @@ def emp_en_cola():
 
 
 def snapshot_empleados():
-    # dict {col: (estado, hora_inicio_esp, hora_llegada, terminal_id)} — acceso O(1)
-    # por columna desde el modelo y mucho más compacto que una lista de dicts.
+    # dict {col: (estado, hora_inicio_espera, terminal_id)} — acceso O(1) por columna desde
+    # el modelo y mucho más compacto que una lista de dicts. `hora_inicio_espera` es la hora
+    # en que el empleado entró a la cola (None si fue atendido de inmediato, sin espera).
     # Valores crudos (sin redondear): el formateo se hace al mostrar.
     return {
-        emp["col"]: (emp["estado"], emp["hora_inicio_esp"], emp["hora_llegada"], emp["terminal_id"])
+        emp["col"]: (emp["estado"], emp["hora_inicio_espera"], emp["terminal_id"])
         for emp in empleados.values()
     }
 
@@ -130,9 +135,10 @@ def guardar_fila(evento_nombre, rnds):
         "tec_term":  tecnico["terminal_id"],
         "cola":      len(cola),
         "n_at":      contador_atendidos,
-        "n_rt":      contador_rt,
-        "n_lleg":    contador_llegaron,
-        "acum_esp":  acum_espera,
+        "n_lleg":    contador_llegaron,   # cnt_llegadas
+        "n_rt":      contador_rt,          # cnt_se_van
+        "n_esp":     contador_espera,      # cnt_espera
+        "acum_esp":  acum_espera,          # acum_espera
         "rnd_le": rnds.get("llegada_emp"), "t_le": rnds.get("t_llegada_emp"),
         "rnd_at": rnds.get("atencion"),    "t_at": rnds.get("t_atencion"),
         "rnd_lt": rnds.get("llegada_tec"), "t_lt": rnds.get("t_llegada_tec"),
@@ -150,9 +156,8 @@ def asignar_empleado_a_terminal(emp_id, terminal):
     terminal["fin_aten"] = fin
     terminal["emp_id"]   = emp_id
 
-    empleados[emp_id]["estado"]          = "SA"
-    empleados[emp_id]["terminal_id"]     = terminal["id"]
-    empleados[emp_id]["hora_asignacion"] = reloj
+    empleados[emp_id]["estado"]      = "SA"
+    empleados[emp_id]["terminal_id"] = terminal["id"]
 
     push_evento(fin, "fin_atencion", terminal["id"])
     return rnd_a, t_a
@@ -180,14 +185,22 @@ def atender_cola_con_terminal(terminal):
       3. Nadie → terminal queda Libre.
     La cola contiene SOLO empleados; el técnico nunca entra ni la modifica.
     """
+    global acum_espera, contador_espera
+
     # Prioridad 1: técnico esperando y terminal pendiente de mantenimiento
     if tecnico["estado"] == "Esperando Terminal Libre" and terminal["pendiente"]:
         rnd_m, t_m = asignar_tecnico_a_terminal(terminal)
         return {"manten": rnd_m, "t_manten": t_m}
 
-    # Prioridad 2: primer empleado en cola
+    # Prioridad 2: primer empleado en cola. Su espera se contabiliza AHORA, en el
+    # instante exacto en que deja la cola y pasa a ser atendido: acum += reloj - hora_inicio_espera.
     if cola:
         emp = cola.pop(0)
+        emp_obj = empleados[emp["id"]]
+        espera = round(reloj - emp_obj["hora_inicio_espera"], 2)
+        acum_espera = round(acum_espera + espera, 2)
+        contador_espera += 1
+        emp_obj["hora_inicio_espera"] = None   # dejó de esperar → no se propaga más (se muestra "-")
         rnd_a, t_a = asignar_empleado_a_terminal(emp["id"], terminal)
         return {"atencion": rnd_a, "t_atencion": t_a}
 
@@ -198,7 +211,7 @@ def atender_cola_con_terminal(terminal):
 
 # ── Procesadores de eventos ───────────────────────────────────────────────────
 def procesar_llegada_emp():
-    global id_emp_contador, contador_llegaron, contador_rt
+    global id_emp_contador, contador_llegaron, contador_rt, contador_espera
 
     id_emp_contador  += 1
     contador_llegaron += 1
@@ -208,22 +221,25 @@ def procesar_llegada_emp():
     term = terminal_libre_para_emp()
 
     if term:
+        # Terminal libre → atención inmediata: espera 0, pero cuenta en cnt_espera.
+        # NO se anota hora_inicio_espera (no hubo espera en cola).
         empleados[emp_id] = {
             "id": emp_id, "col": emp_id,
-            "estado": "EA", "hora_llegada": reloj,
-            "hora_inicio_esp": None, "hora_asignacion": None, "terminal_id": None
+            "estado": "EA", "hora_inicio_espera": None, "terminal_id": None
         }
         rnd_a, t_a = asignar_empleado_a_terminal(emp_id, term)
         rnds["atencion"]   = rnd_a
         rnds["t_atencion"] = t_a
+        contador_espera += 1   # acum_espera += 0 (atención inmediata)
     elif emp_en_cola() < MAX_COLA:
+        # No hay terminal libre → entra a la cola: se anota hora_inicio_espera AHORA.
         empleados[emp_id] = {
             "id": emp_id, "col": emp_id,
-            "estado": "EA", "hora_llegada": reloj,
-            "hora_inicio_esp": reloj, "hora_asignacion": None, "terminal_id": None
+            "estado": "EA", "hora_inicio_espera": reloj, "terminal_id": None
         }
         cola.append({"tipo": "empleado", "id": emp_id})
     else:
+        # Cola llena → se va (RT). Nunca entra en las estadísticas de espera.
         contador_rt += 1
 
     rnd_e, t_e = gen_llegada_emp()
@@ -235,18 +251,16 @@ def procesar_llegada_emp():
 
 
 def procesar_fin_atencion(terminal_id):
-    global contador_atendidos, acum_espera
+    global contador_atendidos
 
     term   = next(t for t in terminales if t["id"] == terminal_id)
     emp_id = term["emp_id"]
 
     contador_atendidos += 1
 
+    # La espera ya se contabilizó cuando el empleado dejó la cola (atender_cola_con_terminal),
+    # o al llegar si fue atención inmediata. Aquí solo se marca el fin de su atención.
     if emp_id and emp_id in empleados:
-        emp = empleados[emp_id]
-        if emp["hora_inicio_esp"] is not None and emp["hora_asignacion"] is not None:
-            espera = emp["hora_asignacion"] - emp["hora_inicio_esp"]
-            acum_espera = round(acum_espera + espera, 2)
         empleados[emp_id]["estado"] = "AT"  # visible en snapshot de esta fila
 
     term["emp_id"]   = None
@@ -361,7 +375,7 @@ def simular(tiempo_max):
 def resetear_estado():
     global terminales, tecnico, cola, empleados, eventos
     global reloj, iteracion, id_emp_contador
-    global contador_atendidos, contador_rt, contador_llegaron, acum_espera
+    global contador_atendidos, contador_rt, contador_llegaron, contador_espera, acum_espera
     global vector_estado, ultimo_idx_terminal, _seq
 
     terminales = [
@@ -378,6 +392,7 @@ def resetear_estado():
     contador_atendidos = 0
     contador_rt        = 0
     contador_llegaron  = 0
+    contador_espera    = 0
     acum_espera        = 0.0
     vector_estado      = []
     ultimo_idx_terminal = -1
