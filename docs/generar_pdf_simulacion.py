@@ -744,5 +744,86 @@ story += [
     La GUI lee ese resultado y lo muestra en la tabla."""),
 ]
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 14. ARQUITECTURA DE FUNCIONES — QUIEN LLAMA A QUIEN
+# ─────────────────────────────────────────────────────────────────────────────
+story += [
+    P("14. Arquitectura de funciones — quien llama a quien", h1),
+    P("""Cada funcion del archivo tiene un rol bien definido. Entender esos roles
+    y como se relacionan entre si es clave para poder explicar el codigo con claridad."""),
+
+    P("14.1 Loop principal", h2),
+    P("""<b>simular()</b> es el unico punto de entrada. Inicializa el sistema,
+    corre el loop y en cada iteracion llama al procesador que corresponde segun
+    el tipo de evento extraido del heap. Nadie llama a simular() excepto main.py."""),
+
+    P("14.2 Procesadores de eventos", h2),
+    P("""Son llamados <b>unicamente por el loop principal</b>. Cada uno maneja
+    un tipo de evento, modifica el estado global y delega trabajo a las funciones
+    de asignacion y consulta."""),
+    P("""— <b>procesar_llegada_emp()</b>: decide si el empleado va a una terminal
+    (llama a asignar_empleado_a_terminal), espera en cola, o se va.<br/>
+    — <b>procesar_fin_atencion(terminal_id)</b>: libera la terminal y llama a
+    atender_cola_con_terminal para resolver que sigue.<br/>
+    — <b>procesar_llegada_tec()</b>: decide si el tecnico va a una terminal
+    (llama a asignar_tecnico_a_terminal), espera, o se reprograma.<br/>
+    — <b>procesar_fin_manten(terminal_id)</b>: libera la terminal, decide si el
+    tecnico va a la siguiente terminal, espera, o termina la ronda."""),
+
+    P("14.3 Funciones de asignacion", h2),
+    P("""Son llamadas por los procesadores y por atender_cola_con_terminal.
+    Modifican el estado del sistema y programan eventos en el heap."""),
+    P("""— <b>asignar_empleado_a_terminal(emp_id, terminal)</b>: marca la terminal
+    como Ocupada, cambia el estado del empleado a SA, genera el tiempo de atencion
+    con gen_atencion() y programa fin_atencion en el heap.<br/>
+    — <b>asignar_tecnico_a_terminal(terminal)</b>: marca la terminal como Siendo
+    mantenida, cambia el estado del tecnico a Realizando Mantenimiento, genera el
+    tiempo de mantenimiento con gen_mantenimiento() y programa fin_manten en el heap.<br/>
+    — <b>atender_cola_con_terminal(terminal)</b>: decide con prioridad que pasa
+    cuando una terminal queda libre. Tecnico primero si corresponde, empleado de
+    la cola segundo, nadie tercero. Llama a las dos funciones anteriores segun el caso."""),
+
+    P("14.4 Funciones de consulta", h2),
+    P("""Solo <b>leen</b> el estado global, nunca lo modifican. Son llamadas
+    por los procesadores y por atender_cola_con_terminal para tomar decisiones."""),
+    P("""— <b>terminal_libre_para_emp()</b>: busca terminal libre con round-robin (para empleados).<br/>
+    — <b>terminal_libre_con_pendiente()</b>: busca terminal libre con pendiente=True (para el tecnico).<br/>
+    — <b>hay_pendiente_ocupada()</b>: pregunta si hay alguna terminal ocupada con pendiente.<br/>
+    — <b>emp_en_cola()</b>: devuelve cuantos empleados hay esperando en la cola."""),
+
+    P("14.5 Generadores de variables aleatorias", h2),
+    P("""Son llamados por las funciones de asignacion y directamente por los procesadores
+    cuando necesitan programar una llegada futura. Cada uno devuelve (rnd, tiempo)."""),
+    P("""— <b>gen_llegada_emp()</b>: exponencial negativa para tiempo entre llegadas de empleados.<br/>
+    — <b>gen_atencion()</b>: uniforme para tiempo de atencion en terminal.<br/>
+    — <b>gen_mantenimiento()</b>: uniforme para tiempo de mantenimiento por terminal.<br/>
+    — <b>gen_llegada_tec()</b>: uniforme para tiempo entre llegadas del tecnico.<br/>
+    — <b>trunc2(x)</b>: trunca a 2 decimales, usada por todos los generadores anteriores."""),
+
+    P("14.6 Registro de estado", h2),
+    P("""Llamadas al final de cada procesador, una vez que el estado ya fue modificado."""),
+    P("""— <b>snapshot_empleados()</b>: foto del estado de todos los empleados activos
+    en este momento exacto. Devuelve un dict {col: (estado, hora_inicio_espera, terminal_id)}.<br/>
+    — <b>guardar_fila(evento, rnds)</b>: guarda una fila completa en vector_estado con
+    todos los valores del estado actual y los RNDs generados en ese evento."""),
+
+    P("14.7 Cola de eventos (heap)", h2),
+    P("""Usadas por procesadores y funciones de asignacion para insertar eventos,
+    y por el loop para extraerlos."""),
+    P("""— <b>push_evento(tiempo, tipo, eid)</b>: inserta un evento en el heap.<br/>
+    — <b>siguiente_evento()</b>: extrae el evento con menor tiempo del heap.<br/>
+    — <b>tiempo_de(tipo)</b>: consulta el proximo tiempo de un tipo de evento sin extraerlo.
+    Se usa para mostrar las columnas Prox. Evento en la tabla."""),
+
+    P("14.8 Reset", h2),
+    P("""— <b>resetear_estado()</b>: llamada por main.py antes de cada simulacion.
+    Reinicia todas las variables globales a su estado inicial para que la nueva
+    simulacion arranque desde cero sin residuos de la anterior."""),
+
+    NOTA("Regla general del diseno: los procesadores son los unicos que saben "
+         "que tipo de evento ocurrio. Las funciones de asignacion y consulta no saben "
+         "desde que procesador las llaman — solo hacen su tarea y devuelven el resultado."),
+]
+
 doc.build(story)
 print(f"PDF generado: {OUTPUT}")
