@@ -289,5 +289,162 @@ story += [
     SP(),
 ]
 
+# ─────────────────────────────────────────────────────────────────────────────
+# SECCION 10: PREGUNTAS SOBRE EL CODIGO — Python
+# ─────────────────────────────────────────────────────────────────────────────
+story += [P("10. Preguntas sobre el codigo — Python", h1)]
+
+story += [
+    Q("10.1 ¿Para que sirve la palabra global en Python y por que se usa en los procesadores de eventos?"),
+    A("""En Python, si dentro de una funcion se intenta modificar una variable que existe fuera de ella, Python la trata como variable local y tira error. La palabra global le dice a Python que esa variable es la global y no una nueva local. En los procesadores se usa porque modifican variables como contador_llegaron, contador_rt, reloj, etc. que viven fuera de la funcion. Sin global, Python crearia una variable local nueva en lugar de modificar la global."""),
+    CODE(
+"def procesar_llegada_emp():\n"
+"    global id_emp_contador, contador_llegaron  # sin esto, error al hacer +=\n"
+"    id_emp_contador  += 1\n"
+"    contador_llegaron += 1"
+    ),
+    SP(),
+
+    Q("10.2 ¿Que hace next() y por que se usa con una expresion generadora?"),
+    A("""next() toma un iterador o generador y devuelve su primer elemento, luego para. La expresion generadora 't for t in terminales if t[\"id\"] == terminal_id' recorre la lista de terminales y filtra las que cumplen la condicion, pero no construye una lista completa: genera los resultados de a uno. next() toma el primero y para, sin recorrer el resto. Es equivalente a un for con break pero en una sola linea."""),
+    CODE(
+"# Equivalente largo:\n"
+"for t in terminales:\n"
+"    if t['id'] == terminal_id:\n"
+"        term = t\n"
+"        break\n\n"
+"# Con next():\n"
+"term = next(t for t in terminales if t['id'] == terminal_id)"
+    ),
+    SP(),
+
+    Q("10.3 ¿Que hace el operador % (modulo) en el round-robin y por que hace la busqueda circular?"),
+    A("""El modulo devuelve el resto de la division entera. En el round-robin, idx = (ultimo_idx_terminal + offset) % n hace que el indice nunca supere n-1. Por ejemplo con 4 terminales (n=4): si ultimo fue 3 (terminal 4) y offset es 1, (3+1) % 4 = 0, volviendo a la terminal 1. Si ultimo fue 2 y offset es 3, (2+3) % 4 = 1, terminal 2. El modulo hace que la busqueda sea circular automaticamente sin necesidad de if."""),
+    CODE(
+"n = 4  # 4 terminales\n"
+"(3 + 1) % 4 = 0   # despues de la terminal 4, va a la 1\n"
+"(2 + 3) % 4 = 1   # salta de la 3 a la 2\n"
+"(0 + 1) % 4 = 1   # de la 1 a la 2"
+    ),
+    SP(),
+
+    Q("10.4 ¿Que hace any() en hay_pendiente_ocupada() y por que es mejor que un for?"),
+    A("""any() recorre un iterable y devuelve True en cuanto encuentra el primer elemento True, sin seguir recorriendo el resto. Es un cortocircuito: si la primera terminal ya cumple la condicion, no evalua las demas. Un for recorreria todas sin esa optimizacion. Es mas legible y eficiente."""),
+    CODE(
+"# Con any():\n"
+"return any(t['pendiente'] and t['estado'] == 'Ocupada' for t in terminales)\n\n"
+"# Equivalente con for:\n"
+"for t in terminales:\n"
+"    if t['pendiente'] and t['estado'] == 'Ocupada':\n"
+"        return True\n"
+"return False"
+    ),
+    SP(),
+
+    Q("10.5 ¿Que diferencia hay entre dict.get(key) y dict[key]?"),
+    A("""dict[key] tira KeyError si la clave no existe. dict.get(key) devuelve None si la clave no existe, sin tirar error. En el modelo se usa f['emp'].get(a) porque el empleado con ese ID puede no estar en el snapshot de esa fila (por ejemplo si ya fue borrado o si todavia no habia llegado). Con dict[key] tiraria error cada vez que el empleado no existe en esa fila."""),
+    CODE(
+"tup = f['emp'].get(a)   # devuelve None si el empleado no esta\n"
+"if tup is None: return '' # celda vacia, sin error"
+    ),
+    SP(),
+
+    Q("10.6 ¿Que hace rnds.update(extra) y que pasa si extra es un dict vacio?"),
+    A("""dict.update() agrega todas las claves y valores del dict argumento al dict original, pisando las existentes si hay conflicto. Si extra es {} (dict vacio), update no hace nada: el dict original queda igual. Esto es exactamente lo que necesitamos: si atender_cola_con_terminal no asigno a nadie devuelve {}, y rnds queda sin cambios."""),
+    CODE(
+"rnds = {'llegada_tec': 0.54, 't_llegada_tec': 59.3}\n"
+"rnds.update({'atencion': 0.31, 't_atencion': 5.93})\n"
+"# rnds ahora tiene las 4 claves\n\n"
+"rnds.update({})  # no cambia nada"
+    ),
+    SP(),
+
+    Q("10.7 ¿Por que cola.pop(0) y no cola.pop()? ¿Que diferencia hay?"),
+    A("""pop() sin argumento saca el ultimo elemento. pop(0) saca el primero. La cola de empleados funciona como FIFO (primero en llegar, primero en ser atendido): el primer empleado en entrar a la cola debe ser el primero en salir. Por eso se saca el indice 0. Una alternativa mas eficiente seria usar collections.deque con popleft(), pero para el tamanio de cola que maneja este sistema (maximo 5 elementos) la diferencia es irrelevante."""),
+    SP(),
+
+    Q("10.8 ¿Que es una list comprehension y donde se usa en el codigo?"),
+    A("""Es una forma compacta de construir una lista aplicando una expresion a cada elemento de un iterable, con un filtro opcional. En el codigo se usan en varios lugares, por ejemplo en guardar_fila para capturar el estado de las 4 terminales de una vez:"""),
+    CODE(
+"'term_est':  [t['estado']    for t in terminales]   # ['Libre','Ocupada','Libre','Libre']\n"
+"'term_pend': [t['pendiente'] for t in terminales]   # [True, False, True, True]\n"
+"'term_fin':  [t['fin_aten']  for t in terminales]   # [None, 74.3, None, None]"
+    ),
+    SP(),
+
+    Q("10.9 ¿Que es una dict comprehension y donde se usa?"),
+    A("""Es lo mismo que una list comprehension pero construye un diccionario. Se usa en snapshot_empleados para construir el snapshot de todos los empleados activos en una sola linea:"""),
+    CODE(
+"return {\n"
+"    emp['col']: (emp['estado'], emp['hora_inicio_espera'], emp['terminal_id'])\n"
+"    for emp in empleados.values()\n"
+"}"
+    ),
+    P("""La clave es el numero de columna del empleado y el valor es una tupla con sus tres datos. Es equivalente a un for que construye el dict de a uno pero mas compacto.""", respuesta),
+    SP(),
+
+    Q("10.10 ¿Que hace bisect.bisect_left y como funciona internamente?"),
+    A("""bisect_left hace una busqueda binaria sobre una lista ordenada y devuelve el indice donde deberia insertarse el valor para mantener el orden. Si el valor ya existe, devuelve el indice del primero. Internamente divide la lista por la mitad en cada paso: si el valor buscado es mayor que el elemento del medio, busca en la mitad derecha; si es menor, en la izquierda. Repite hasta encontrar la posicion. Cuesta O(log n): sobre 100.000 elementos, maximo 17 pasos."""),
+    CODE(
+"relojes = [0.0, 1.34, 2.71, 5.02, 8.43, ...]\n"
+"bisect.bisect_left(relojes, 5.0)\n"
+"# devuelve 3: la primera fila con reloj >= 5.0 esta en el indice 3"
+    ),
+    SP(),
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECCION 11: PREGUNTAS SOBRE EL CODIGO — PyQt5
+# ─────────────────────────────────────────────────────────────────────────────
+story += [P("11. Preguntas sobre el codigo — PyQt5", h1)]
+
+story += [
+    Q("11.1 ¿Que metodos obligatorios hay que implementar al heredar de QAbstractTableModel?"),
+    A("""Son tres metodos minimos obligatorios: rowCount() que devuelve la cantidad de filas, columnCount() que devuelve la cantidad de columnas, y data() que devuelve el contenido de una celda dado un indice y un rol. Sin estos tres PyQt5 no puede mostrar nada. headerData() es opcional pero necesario para mostrar los titulos de columnas."""),
+    CODE(
+"def rowCount(self, parent=None):    return len(self.rows)\n"
+"def columnCount(self, parent=None): return len(self._specs)\n"
+"def data(self, index, role):        # devuelve texto o color segun role\n"
+"def headerData(self, section, orientation, role):  # titulos"
+    ),
+    SP(),
+
+    Q("11.2 ¿Que es un role en PyQt5 y cuales se usan en SimModel?"),
+    A("""Un role es un identificador que le dice al modelo que tipo de informacion se esta pidiendo para una celda. No siempre se quiere el texto: a veces se quiere el color, el tooltip, la fuente, etc. En SimModel se usan dos roles: Qt.DisplayRole para el texto que se muestra en la celda, y Qt.ForegroundRole para el color del texto. Cada vez que PyQt5 necesita renderizar una celda, llama a data() con cada role por separado."""),
+    SP(),
+
+    Q("11.3 ¿Para que sirven beginResetModel y endResetModel en set_content?"),
+    A("""Le avisan a PyQt5 que los datos del modelo van a cambiar completamente. beginResetModel le dice a la vista que se prepare (descarta indices internos y selecciones). endResetModel le dice que ya termino y que redibuje todo. Sin estas llamadas, la vista podria tener indices desactualizados y mostrar datos incorrectos o crashear al intentar acceder a filas que ya no existen."""),
+    SP(),
+
+    Q("11.4 ¿Que es pyqtSignal y como funciona el mecanismo de senales en PyQt5?"),
+    A("""pyqtSignal define una senal en una clase que hereda de QObject. Una senal es un evento que puede ser emitido con emit() y al que otros objetos pueden conectarse con connect(). Cuando se emite, PyQt5 llama automaticamente a todos los metodos conectados. En el codigo, finished = pyqtSignal() define la senal, self.finished.emit() la emite al terminar la simulacion, y self._worker.finished.connect(self._on_sim_done) conecta esa senal al metodo que actualiza la UI."""),
+    SP(),
+
+    Q("11.5 ¿Por que se usa moveToThread en lugar de subclasear QThread directamente?"),
+    A("""Es el patron recomendado por Qt. Subclasear QThread y sobreescribir run() funciona pero tiene problemas: el objeto vive en el hilo principal y solo run() corre en el secundario, lo que genera confusion con las senales. Con moveToThread, el objeto completo (incluyendo sus slots) vive en el hilo secundario, haciendo la comunicacion por senales mas segura y predecible."""),
+    SP(),
+
+    Q("11.6 ¿Que hace deleteLater y por que no se usa del directamente?"),
+    A("""deleteLater le dice a PyQt5 que borre el objeto cuando el event loop vuelva al hilo que lo posee y no haya operaciones pendientes. del en Python borra la referencia inmediatamente, pero si PyQt5 todavia tiene pendiente alguna operacion con ese objeto (como procesar una senal), puede crashear. deleteLater es la forma segura de liberar objetos de Qt."""),
+    SP(),
+
+    Q("11.7 ¿Por que ambas tablas (frozen y principal) tienen ScrollBarAlwaysOn horizontal?"),
+    A("""Para que los dos viewports tengan exactamente la misma altura. Cuando una scrollbar esta visible ocupa espacio fisico abajo del viewport. Si una tabla tiene la scrollbar visible y la otra no, sus viewports tienen alturas distintas y el rango de scroll vertical no coincide, produciendo un desfase al llegar al final. Al forzar ScrollBarAlwaysOn en las dos, ambas reservan el mismo espacio abajo y sus alturas coinciden siempre. La scrollbar del frozen queda inerte porque sus 3 columnas entran sin scroll."""),
+    SP(),
+
+    Q("11.8 ¿Que hace setSelectionModel y por que se comparte entre las dos tablas?"),
+    A("""setSelectionModel asigna el objeto que gestiona que filas estan seleccionadas. Al compartirlo entre _frozen y tbl_vector, cuando el usuario hace click en una fila de cualquiera de las dos tablas, ambas resaltan esa misma fila. Sin esto, seleccionar en una no afectaria a la otra y visualmente pareceria que son tablas independientes."""),
+    SP(),
+
+    Q("11.9 ¿Que hace paintEvent en GroupedHeader y cuando lo llama PyQt5?"),
+    A("""paintEvent es el metodo que PyQt5 llama cada vez que necesita redibujar el widget: cuando aparece en pantalla por primera vez, cuando el usuario hace scroll, cuando se redimensiona la ventana, o cuando se llama a viewport().update(). Al sobreescribirlo en GroupedHeader se reemplaza el dibujado estandar de QHeaderView por el dibujado personalizado de dos niveles usando QPainter."""),
+    SP(),
+
+    Q("11.10 ¿Que hace uic.loadUi y que ventaja tiene sobre construir la UI en Python?"),
+    A("""uic.loadUi carga un archivo .ui (XML generado por Qt Designer) y crea todos los widgets definidos ahi como atributos del objeto receptor. La ventaja es que la estructura visual se define en Qt Designer de forma grafica, sin escribir codigo. Si se quiere mover un boton o cambiar un layout, se hace en el diseñador y no hay que tocar el codigo Python. Separa el diseño visual de la logica."""),
+    SP(),
+]
+
 doc.build(story)
 print(f"PDF generado: {OUTPUT}")

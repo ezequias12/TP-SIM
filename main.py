@@ -456,6 +456,32 @@ class MainWindow(QMainWindow):
     def on_simular(self):
         if self._thread and self._thread.isRunning():
             return
+
+        # ── Validación de campos inválidos (texto no convertible a número) ──
+        campos = [
+            (self.txt_media_llegada, "Media llegada"),
+            (self.txt_max_cola,      "Máx. en cola"),
+            (self.txt_atn_min,       "Atención mín"),
+            (self.txt_atn_max,       "Atención máx"),
+            (self.txt_mant_min,      "Mantenimiento mín"),
+            (self.txt_mant_max,      "Mantenimiento máx"),
+            (self.txt_tec_min,       "Técnico mín"),
+            (self.txt_tec_max,       "Técnico máx"),
+            (self.txt_tiempo_max,    "Tiempo máximo"),
+        ]
+        errores = []
+        for widget, nombre in campos:
+            txt = widget.text().strip()
+            if txt:
+                try:
+                    float(txt)
+                except ValueError:
+                    errores.append(f"{nombre} tiene un valor inválido: '{txt}'")
+        if errores:
+            self.lbl_info.setStyleSheet("color:#f38ba8;")
+            self.lbl_info.setText("⚠  " + "   ·   ".join(errores))
+            return
+
         params = {
             "media":      self._valf(self.txt_media_llegada, 2.0),
             "max_cola":   self._vali(self.txt_max_cola,       5),
@@ -483,7 +509,7 @@ class MainWindow(QMainWindow):
         if params["tec_max"] <= params["tec_min"]:
             errores.append("Técnico: el máx debe ser mayor al mín")
         if errores:
-            self.lbl_info.setStyleSheet("color:#f38ba8;")   # rojo
+            self.lbl_info.setStyleSheet("color:#f38ba8;")
             self.lbl_info.setText("⚠  " + "   ·   ".join(errores))
             return
 
