@@ -307,7 +307,7 @@ def procesar_fin_manten(terminal_id):
     if sig_libre:
         # Ir directo a la siguiente terminal libre con pendiente
         term_actual["estado"] = "Libre"
-        atender_cola_con_terminal(term_actual)
+        rnds.update(atender_cola_con_terminal(term_actual))
         rnd_m, t_m = asignar_tecnico_a_terminal(sig_libre)
         rnds["manten"]   = rnd_m
         rnds["t_manten"] = t_m
@@ -316,7 +316,7 @@ def procesar_fin_manten(terminal_id):
         # Espera al costado en su propio estado; nunca entra en la cola de empleados
         tecnico["estado"] = "Esperando Terminal Libre"
         term_actual["estado"] = "Libre"
-        atender_cola_con_terminal(term_actual)
+        rnds.update(atender_cola_con_terminal(term_actual))
 
     else:
         # Ronda completa — resetear pendiente y descansar
@@ -328,7 +328,7 @@ def procesar_fin_manten(terminal_id):
         rnds["t_llegada_tec"] = t_t
         push_evento(round(reloj + t_t, 2), "llegada_tec")
         term_actual["estado"] = "Libre"
-        atender_cola_con_terminal(term_actual)
+        rnds.update(atender_cola_con_terminal(term_actual))
 
     guardar_fila(f"Fin Mantenimiento T{terminal_id}", rnds)
 
