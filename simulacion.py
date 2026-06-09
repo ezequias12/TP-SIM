@@ -195,13 +195,13 @@ def atender_cola_con_terminal(terminal):
     # Prioridad 2: primer empleado en cola. Su espera se contabiliza AHORA, en el
     # instante exacto en que deja la cola y pasa a ser atendido: acum += reloj - hora_inicio_espera.
     if cola:
-        emp = cola.pop(0)
-        emp_obj = empleados[emp["id"]]
+        emp_id_cola = cola.pop(0)
+        emp_obj = empleados[emp_id_cola]
         espera = round(reloj - emp_obj["hora_inicio_espera"], 2)
         acum_espera = round(acum_espera + espera, 2)
         contador_espera += 1
         emp_obj["hora_inicio_espera"] = None   # dejó de esperar → no se propaga más (se muestra "-")
-        rnd_a, t_a = asignar_empleado_a_terminal(emp["id"], terminal)
+        rnd_a, t_a = asignar_empleado_a_terminal(emp_id_cola, terminal)
         return {"atencion": rnd_a, "t_atencion": t_a}
 
     # Nadie espera
@@ -237,7 +237,7 @@ def procesar_llegada_emp():
             "id": emp_id, "col": emp_id,
             "estado": "EA", "hora_inicio_espera": reloj, "terminal_id": None
         }
-        cola.append({"tipo": "empleado", "id": emp_id})
+        cola.append(emp_id)
     else:
         # Cola llena → se va (RT). Nunca entra en las estadísticas de espera.
         contador_rt += 1
