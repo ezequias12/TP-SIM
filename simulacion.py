@@ -26,7 +26,7 @@ contador_espera   = 0   # cnt_espera:   empleados incluidos en el promedio de es
 acum_espera       = 0.0
 vector_estado     = []
 ultimo_idx_terminal = -1  # round-robin: índice de la última terminal asignada a un empleado
-_seq              = 0     # contador monótono para desempate estable en la cola de eventos (heapq)
+_seq              = 0     # contador para desempate en la cola de eventos (heapq)
 
 
 # ── Variables aleatorias ──────────────────────────────────────────────────────
@@ -34,9 +34,6 @@ def trunc2(x):
     return int(x * 100) / 100
 
 
-# El RND se trunca a 2 decimales ANTES de la fórmula: así el RND que se muestra en la
-# tabla es exactamente el que se usó en el cálculo (tabla auditable / reproducible en
-# Excel). Sin esto, el display mostraría 0.26 mientras la fórmula corre con 0.2634…
 def gen_llegada_emp():
     rnd = trunc2(random.random())
     t = trunc2(-MEDIA_LLEGADA_EMP * math.log(1 - rnd))
@@ -62,9 +59,8 @@ def gen_llegada_tec():
 
 
 # ── Cola de eventos (heap binario, O(log n) por inserción/extracción) ──────────
-# Evento = (tiempo, seq, tipo, id). `seq` (monótono) desempata por orden de
-# inserción cuando dos eventos tienen el mismo tiempo, replicando exactamente el
-# orden del antiguo min() lineal sobre la lista en orden de inserción.
+# Evento = (tiempo, seq, tipo, id). 
+
 def push_evento(tiempo, tipo, eid=None):
     global _seq
     heapq.heappush(eventos, (tiempo, _seq, tipo, eid))
@@ -107,10 +103,6 @@ def emp_en_cola():
 
 
 def snapshot_empleados():
-    # dict {col: (estado, hora_inicio_espera, terminal_id)} — acceso O(1) por columna desde
-    # el modelo y mucho más compacto que una lista de dicts. `hora_inicio_espera` es la hora
-    # en que el empleado entró a la cola (None si fue atendido de inmediato, sin espera).
-    # Valores crudos (sin redondear): el formateo se hace al mostrar.
     return {
         emp["col"]: (emp["estado"], emp["hora_inicio_espera"], emp["terminal_id"])
         for emp in empleados.values()
@@ -118,9 +110,6 @@ def snapshot_empleados():
 
 
 def guardar_fila(evento_nombre, rnds):
-    # Fila compacta con valores CRUDOS. Todo el formateo (truncado a 2 decimales,
-    # "SI"/"NO", "-", %RT, prom. espera) se difiere al modelo, que solo formatea
-    # las celdas visibles. Así el loop de simulación no construye strings ni redondea.
     vector_estado.append({
         "num":      len(vector_estado),     # índice secuencial: 0=init, 1,2,3...
         "reloj":    reloj,
@@ -129,7 +118,7 @@ def guardar_fila(evento_nombre, rnds):
         "prox_tec": tiempo_de("llegada_tec"),
         "term_est":  [t["estado"]    for t in terminales],   # 4 strings
         "term_pend": [t["pendiente"] for t in terminales],   # 4 bools
-        "term_fin":  [t["fin_aten"]  for t in terminales],   # 4 float|None (sustituye al antiguo fin_at duplicado)
+        "term_fin":  [t["fin_aten"]  for t in terminales],   # 4 float|None 
         "fin_mant":  tecnico["fin_manten"],
         "tec_est":   tecnico["estado"],
         "tec_term":  tecnico["terminal_id"],
@@ -178,13 +167,6 @@ def asignar_tecnico_a_terminal(terminal):
 
 
 def atender_cola_con_terminal(terminal):
-    """
-    Al liberarse una terminal, la asigna en este orden de prioridad:
-      1. Técnico en ETL si la terminal aún tiene mantenimiento pendiente.
-      2. Primer empleado en cola.
-      3. Nadie → terminal queda Libre.
-    La cola contiene SOLO empleados; el técnico nunca entra ni la modifica.
-    """
     global acum_espera, contador_espera
 
     # Prioridad 1: técnico esperando y terminal pendiente de mantenimiento
@@ -258,8 +240,6 @@ def procesar_fin_atencion(terminal_id):
 
     contador_atendidos += 1
 
-    # La espera ya se contabilizó cuando el empleado dejó la cola (atender_cola_con_terminal),
-    # o al llegar si fue atención inmediata. Aquí solo se marca el fin de su atención.
     if emp_id and emp_id in empleados:
         empleados[emp_id]["estado"] = "AT"  # visible en snapshot de esta fila
 
@@ -354,9 +334,6 @@ def simular(tiempo_max):
 
         tiempo, _, tipo, eid = siguiente_evento()
 
-        # Si el próximo evento cae fuera del horizonte, cortamos SIN pisar `reloj`,
-        # de modo que `reloj` conserve el tiempo del último evento efectivamente
-        # procesado (ese es el tiempo_simulado real).
         if tiempo > tiempo_max:
             break
 
