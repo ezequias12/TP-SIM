@@ -10,6 +10,17 @@ ATN_MIN,  ATN_MAX  = 5, 8
 MANT_MIN, MANT_MAX = 3, 10
 TEC_MIN,  TEC_MAX  = 57, 63
 
+# ── Ecuación diferencial del mantenimiento (método de Euler) ──────────────────
+# La demora del mantenimiento de una terminal NO es uniforme: se obtiene
+# resolviendo la ecuación diferencial
+#     dA/dt = -68 - A**2 / Ao        (A = cantidad de archivos por procesar)
+# por el método de Euler (paso EULER_H), partiendo de A = Ao, hasta que A llega
+# a 0. Ese instante t es la demora. Ao (cantidad inicial de archivos de la
+# terminal) puede ser 1000, 1500 o 2000, cada uno con probabilidad 0.33.
+EULER_H     = 0.01
+EULER_K     = 68
+AO_OPCIONES = [1000, 1500, 2000]
+
 # ── Estado global ─────────────────────────────────────────────────────────────
 terminales        = []
 tecnico           = {}
@@ -46,10 +57,33 @@ def gen_atencion():
     return rnd, t
 
 
+def resolver_euler_demora(ao):
+    """Resuelve dA/dt = -68 - A**2/Ao por el método de Euler (paso EULER_H),
+    partiendo de A = Ao, y devuelve el instante t en que A alcanza 0.
+    Ese t es la demora del mantenimiento de la terminal (replica el .ods)."""
+    t = 0.0
+    a = float(ao)
+    while a > 0:
+        da_dt = -EULER_K - (a * a) / ao
+        a = a + EULER_H * da_dt
+        t = t + EULER_H
+    return round(t, 2)
+
+
 def gen_mantenimiento():
+    """Demora del mantenimiento vía ecuación diferencial (Euler).
+    El RND selecciona la cantidad de archivos Aj de la terminal (1000/1500/2000,
+    probabilidad 0.33 cada una) y se resuelve el tiempo hasta A = 0.
+    Devuelve (rnd, demora, ao)."""
     rnd = trunc2(random.random())
-    t = trunc2(MANT_MIN + rnd * (MANT_MAX - MANT_MIN))
-    return rnd, t
+    if rnd < 0.33:
+        ao = AO_OPCIONES[0]      # 1000
+    elif rnd < 0.66:
+        ao = AO_OPCIONES[1]      # 1500
+    else:
+        ao = AO_OPCIONES[2]      # 2000
+    demora = resolver_euler_demora(ao)
+    return rnd, demora, ao
 
 
 def gen_llegada_tec():
@@ -131,7 +165,8 @@ def guardar_fila(evento_nombre, rnds):
         "rnd_le": rnds.get("llegada_emp"), "t_le": rnds.get("t_llegada_emp"),
         "rnd_at": rnds.get("atencion"),    "t_at": rnds.get("t_atencion"),
         "rnd_lt": rnds.get("llegada_tec"), "t_lt": rnds.get("t_llegada_tec"),
-        "rnd_mt": rnds.get("manten"),      "t_mt": rnds.get("t_manten"),
+        "rnd_mt": rnds.get("manten"),      "ao_mt": rnds.get("ao_manten"),
+        "t_mt": rnds.get("t_manten"),
         "emp":    snapshot_empleados(),
     })
 
@@ -153,8 +188,8 @@ def asignar_empleado_a_terminal(emp_id, terminal):
 
 
 def asignar_tecnico_a_terminal(terminal):
-    rnd_m, t_m = gen_mantenimiento()
-    fin = round(reloj + t_m, 2)
+    rnd_m, t_m, ao_m = gen_mantenimiento()
+    fin = round(reloj + t_m, 2)   # cuándo estará disponible = reloj + demora
 
     terminal["estado"]     = "Siendo mantenida"
     terminal["pendiente"]  = False
@@ -163,7 +198,7 @@ def asignar_tecnico_a_terminal(terminal):
     tecnico["fin_manten"]  = fin
 
     push_evento(fin, "fin_manten", terminal["id"])
-    return rnd_m, t_m
+    return rnd_m, t_m, ao_m
 
 
 def atender_cola_con_terminal(terminal):
@@ -171,8 +206,8 @@ def atender_cola_con_terminal(terminal):
 
     # Prioridad 1: técnico esperando y terminal pendiente de mantenimiento
     if tecnico["estado"] == "Esperando Terminal Libre" and terminal["pendiente"]:
-        rnd_m, t_m = asignar_tecnico_a_terminal(terminal)
-        return {"manten": rnd_m, "t_manten": t_m}
+        rnd_m, t_m, ao_m = asignar_tecnico_a_terminal(terminal)
+        return {"manten": rnd_m, "t_manten": t_m, "ao_manten": ao_m}
 
     # Prioridad 2: primer empleado en cola. Su espera se contabiliza AHORA, en el
     # instante exacto en que deja la cola y pasa a ser atendido: acum += reloj - hora_inicio_espera.
@@ -258,9 +293,10 @@ def procesar_llegada_tec():
     term = terminal_libre_con_pendiente()
 
     if term:
-        rnd_m, t_m = asignar_tecnico_a_terminal(term)
-        rnds["manten"]   = rnd_m
-        rnds["t_manten"] = t_m
+        rnd_m, t_m, ao_m = asignar_tecnico_a_terminal(term)
+        rnds["manten"]    = rnd_m
+        rnds["t_manten"]  = t_m
+        rnds["ao_manten"] = ao_m
     elif hay_pendiente_ocupada():
         # Espera al costado en su propio estado; nunca entra en la cola de empleados
         tecnico["estado"] = "Esperando Terminal Libre"
@@ -288,9 +324,10 @@ def procesar_fin_manten(terminal_id):
         # Ir directo a la siguiente terminal libre con pendiente
         term_actual["estado"] = "Libre"
         rnds.update(atender_cola_con_terminal(term_actual))
-        rnd_m, t_m = asignar_tecnico_a_terminal(sig_libre)
-        rnds["manten"]   = rnd_m
-        rnds["t_manten"] = t_m
+        rnd_m, t_m, ao_m = asignar_tecnico_a_terminal(sig_libre)
+        rnds["manten"]    = rnd_m
+        rnds["t_manten"]  = t_m
+        rnds["ao_manten"] = ao_m
 
     elif sig_ocupada:
         # Espera al costado en su propio estado; nunca entra en la cola de empleados
